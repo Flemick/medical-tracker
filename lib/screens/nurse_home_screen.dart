@@ -1,0 +1,550 @@
+import 'package:flutter/material.dart';
+import '../models/equipment.dart';
+import '../models/complaint.dart';
+import '../models/user_model.dart';
+import '../services/app_state.dart';
+import '../theme/app_theme.dart';
+import '../widgets/status_badge.dart';
+import '../widgets/quick_stat_card.dart';
+import 'equipment/equipment_list_screen.dart';
+import 'equipment/equipment_detail_screen.dart';
+import 'equipment/qr_scanner_screen.dart';
+import 'complaints/complaint_list_screen.dart';
+import 'complaints/create_complaint_screen.dart';
+import 'notifications/notification_center_screen.dart';
+import 'admin/admin_dashboard_screen.dart';
+import 'login_screen.dart';
+
+class NurseHomeScreen extends StatefulWidget {
+  final AppState appState;
+
+  const NurseHomeScreen({super.key, required this.appState});
+
+  @override
+  State<NurseHomeScreen> createState() => _NurseHomeScreenState();
+}
+
+class _NurseHomeScreenState extends State<NurseHomeScreen> {
+  int _currentIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final screens = [
+      _NurseHomeDashboardTab(
+        appState: widget.appState,
+        onNavigateTab: (index) {
+          setState(() => _currentIndex = index);
+        },
+      ),
+      EquipmentListScreen(appState: widget.appState),
+      QrScannerScreen(appState: widget.appState),
+      ComplaintListScreen(appState: widget.appState),
+      NotificationCenterScreen(appState: widget.appState),
+    ];
+
+    final unreadCount = widget.appState.unreadNotificationsCount;
+
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: screens,
+      ),
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: AppColors.borderLight, width: 1)),
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (index) {
+            setState(() => _currentIndex = index);
+          },
+          backgroundColor: Colors.white,
+          elevation: 0,
+          indicatorColor: AppColors.primarySurface,
+          destinations: [
+            const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_rounded, color: AppColors.primaryDark),
+              label: 'Home',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.inventory_2_outlined),
+              selectedIcon: Icon(Icons.inventory_2_rounded, color: AppColors.primaryDark),
+              label: 'Equipment',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.qr_code_scanner_rounded),
+              selectedIcon: Icon(Icons.qr_code_scanner_rounded, color: AppColors.primaryDark),
+              label: 'QR Scan',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.assignment_late_outlined),
+              selectedIcon: Icon(Icons.assignment_late_rounded, color: AppColors.primaryDark),
+              label: 'Complaints',
+            ),
+            NavigationDestination(
+              icon: Badge(
+                isLabelVisible: unreadCount > 0,
+                label: Text('$unreadCount'),
+                child: const Icon(Icons.notifications_none_rounded),
+              ),
+              selectedIcon: Badge(
+                isLabelVisible: unreadCount > 0,
+                label: Text('$unreadCount'),
+                child: const Icon(Icons.notifications_rounded, color: AppColors.primaryDark),
+              ),
+              label: 'Alerts',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NurseHomeDashboardTab extends StatelessWidget {
+  final AppState appState;
+  final Function(int) onNavigateTab;
+
+  const _NurseHomeDashboardTab({
+    required this.appState,
+    required this.onNavigateTab,
+  });
+
+  void _showProfileSwitchSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Switch Nurse / Admin Account',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                ...appState.nurses.map((user) {
+                  final isCurrent = user.id == appState.currentUser?.id;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: AppColors.primarySurface,
+                      child: Text(
+                        user.name.substring(0, 1),
+                        style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    title: Text(
+                      user.name,
+                      style: TextStyle(fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500),
+                    ),
+                    subtitle: Text('${user.department} • ${user.employeeId}'),
+                    trailing: isCurrent ? const Icon(Icons.check_circle_rounded, color: AppColors.primary) : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      appState.loginAs(user);
+                      if (user.role == UserRole.admin) {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => AdminDashboardScreen(appState: appState)),
+                        );
+                      }
+                    },
+                  );
+                }),
+                const Divider(height: 20),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.logout_rounded, color: Colors.red),
+                  title: const Text('Sign Out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    appState.logout();
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => LoginScreen(appState: appState)),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nurse = appState.currentUser;
+    final equipments = appState.equipments;
+    final nurseComplaints = appState.getComplaintsForCurrentNurse();
+
+    final availableCount = equipments.where((e) => e.availability == EquipmentAvailability.available).length;
+    final inUseCount = equipments.where((e) => e.availability == EquipmentAvailability.inUse).length;
+    final myOpenTickets = nurseComplaints.where((c) => c.status != ComplaintStatus.resolved).length;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.local_hospital_rounded, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'St. Jude Medical',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textMainLight),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.swap_horiz_rounded),
+            tooltip: 'Switch User Profile',
+            onPressed: () => _showProfileSwitchSheet(context),
+          ),
+          IconButton(
+            icon: Badge(
+              isLabelVisible: appState.unreadNotificationsCount > 0,
+              label: Text('${appState.unreadNotificationsCount}'),
+              child: const Icon(Icons.notifications_outlined),
+            ),
+            tooltip: 'Notifications',
+            onPressed: () => onNavigateTab(4),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Nurse Profile Shift Banner
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.primaryDark, AppColors.primary],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
+                        child: const Icon(Icons.person_outline_rounded, color: Colors.white, size: 26),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nurse?.name ?? 'Clinical Nurse',
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${nurse?.roleTitle ?? "RN"} • ${nurse?.employeeId ?? "NUR-000"}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.85),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => _showProfileSwitchSheet(context),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            children: [
+                              Text('Switch', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                              Icon(Icons.arrow_drop_down_rounded, color: Colors.white, size: 16),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.local_hospital_outlined, size: 14, color: Colors.white),
+                            const SizedBox(width: 6),
+                            Text(
+                              nurse?.department ?? 'ICU',
+                              style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            const Icon(Icons.access_time_rounded, size: 14, color: Colors.white),
+                            const SizedBox(width: 6),
+                            Text(
+                              nurse?.shift.split('(').first.trim() ?? 'Morning',
+                              style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Quick Actions Bar (Scan QR, Search Equipment, Report Issue, View Tickets)
+            const Text(
+              'Quick Actions',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textMainLight),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _buildActionTile(
+                  icon: Icons.qr_code_scanner_rounded,
+                  label: 'Scan QR Tag',
+                  color: AppColors.primary,
+                  onTap: () => onNavigateTab(2),
+                ),
+                const SizedBox(width: 10),
+                _buildActionTile(
+                  icon: Icons.search_rounded,
+                  label: 'Find Equipment',
+                  color: const Color(0xFF0284C7),
+                  onTap: () => onNavigateTab(1),
+                ),
+                const SizedBox(width: 10),
+                _buildActionTile(
+                  icon: Icons.report_problem_rounded,
+                  label: 'Report Issue',
+                  color: const Color(0xFFEF4444),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CreateComplaintScreen(appState: appState),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Metrics Cards
+            Row(
+              children: [
+                Expanded(
+                  child: QuickStatCard(
+                    title: 'Available Devices',
+                    value: '$availableCount',
+                    icon: Icons.check_circle_outline_rounded,
+                    color: const Color(0xFF10B981),
+                    bgColor: const Color(0xFFD1FAE5),
+                    onTap: () => onNavigateTab(1),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: QuickStatCard(
+                    title: 'In Active Use',
+                    value: '$inUseCount',
+                    icon: Icons.play_circle_outline_rounded,
+                    color: const Color(0xFF0284C7),
+                    bgColor: const Color(0xFFE0F2FE),
+                    onTap: () => onNavigateTab(1),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: QuickStatCard(
+                    title: 'My Active Tickets',
+                    value: '$myOpenTickets',
+                    icon: Icons.assignment_late_outlined,
+                    color: const Color(0xFF6366F1),
+                    bgColor: const Color(0xFFEEF2FF),
+                    onTap: () => onNavigateTab(3),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Live Equipment Catalog Preview
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Hospital Devices & Ward Status',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textMainLight),
+                ),
+                TextButton(
+                  onPressed: () => onNavigateTab(1),
+                  child: const Text('View All', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ...equipments.take(4).map((eq) {
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => EquipmentDetailScreen(equipmentId: eq.id, appState: appState),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primarySurface,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.devices_other_rounded, color: AppColors.primary, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                eq.name,
+                                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.textMainLight),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${eq.qrCode} • ${eq.location.shortLocation}',
+                                style: const TextStyle(fontSize: 11.5, color: AppColors.textMutedLight),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        AvailabilityBadge(availability: eq.availability, compact: true),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionTile({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.borderLight),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMainLight,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
