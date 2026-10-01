@@ -6,9 +6,11 @@ import '../models/complaint.dart';
 import '../models/notification_item.dart';
 import '../theme/app_theme.dart';
 import 'mock_data.dart';
+import 'api_service.dart';
 
 class AppState extends ChangeNotifier {
   final Uuid _uuid = const Uuid();
+  final ApiService _api = ApiService();
 
   UserModel? _currentUser;
   List<UserModel> _nurses = [];
@@ -16,11 +18,18 @@ class AppState extends ChangeNotifier {
   List<ComplaintModel> _complaints = [];
   List<NotificationItem> _notifications = [];
 
+  bool _isSyncing = false;
+  bool _isOnline = false;
+
   UserModel? get currentUser => _currentUser;
   List<UserModel> get nurses => List.unmodifiable(_nurses);
   List<EquipmentModel> get equipments => List.unmodifiable(_equipments);
   List<ComplaintModel> get complaints => List.unmodifiable(_complaints);
   List<NotificationItem> get notifications => List.unmodifiable(_notifications);
+
+  bool get isSyncing => _isSyncing;
+  bool get isOnline => _isOnline;
+  String get apiBaseUrl => _api.baseUrl;
 
   bool get isLoggedIn => _currentUser != null;
   bool get isAdmin => _currentUser?.role == UserRole.admin;
@@ -49,6 +58,7 @@ class AppState extends ChangeNotifier {
 
   AppState() {
     _initializeData();
+    syncWithBackend();
   }
 
   void _initializeData() {
@@ -56,23 +66,97 @@ class AppState extends ChangeNotifier {
     _equipments = MockData.getEquipments();
     _complaints = MockData.getComplaints();
     _notifications = MockData.getNotifications();
-    // Default initial login for nurse Elena Vance for immediate preview
+    // Default initial preview user
     _currentUser = _nurses.firstWhere((n) => n.id == 'nurse-1');
   }
 
+  void setApiBaseUrl(String newUrl) {
+    _api.setBaseUrl(newUrl);
+    syncWithBackend();
+  }
+
+  // --- Background Sync with Flask & Supabase ---
+  Future<void> syncWithBackend() async {
+    _isSyncing = true;
+    notifyListeners();
+
+    try {
+      final healthy = await _api.checkHealth();
+      _isOnline = healthy;
+
+      if (healthy) {
+        final remoteEquipment = await _api.fetchEquipment();
+        if (remoteEquipment != null && remoteEquipment.isNotEmpty) {
+          _equipments = remoteEquipment;
+        }
+
+        final remoteComplaints = await _api.fetchComplaints();
+        if (remoteComplaints != null && remoteComplaints.isNotEmpty) {
+          _complaints = remoteComplaints;
+        }
+
+        final remoteNotifs = await _api.fetchNotifications();
+        if (remoteNotifs != null && remoteNotifs.isNotEmpty) {
+          _notifications = remoteNotifs;
+        }
+      }
+    } catch (e) {
+      debugPrint('Sync error: $e');
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
   // --- Auth Operations ---
+  Future<bool> loginWithEmailOrId(String identifier, String passwordOrPin) async {
+    final cleanId = identifier.trim().toLowerCase();
+    final cleanPass = passwordOrPin.trim();
+
+    // 1. Try remote API login
+    final loginRes = await _api.login(cleanId, cleanPass);
+    if (loginRes != null) {
+      final profile = loginRes['profile'] as Map<String, dynamic>?;
+      final roleStr = profile?['role']?.toString().toUpperCase() ?? 'NURSE';
+      final role = roleStr == 'ADMIN' ? UserRole.admin : UserRole.nurse;
+
+      _currentUser = UserModel(
+        id: profile?['id']?.toString() ?? 'user-1',
+        employeeId: cleanId.contains('@') ? cleanId.split('@')[0].toUpperCase() : cleanId.toUpperCase(),
+        name: profile?['name']?.toString() ?? 'Hospital Staff',
+        email: cleanId.contains('@') ? cleanId : '$cleanId@medipulse.org',
+        department: profile?['department']?.toString() ?? 'Cardiology & ICU',
+        roleTitle: role == UserRole.admin ? 'Biomedical Ops Admin' : 'Staff Nurse',
+        shift: 'Morning (07:00 - 15:00)',
+        role: role,
+        pin: cleanPass,
+        isActive: true,
+        createdAt: DateTime.now(),
+      );
+      _isOnline = true;
+      notifyListeners();
+      syncWithBackend();
+      return true;
+    }
+
+    // 2. Fallback to local nurse & admin list
+    return loginWithIdAndPin(identifier, passwordOrPin);
+  }
+
   bool loginWithIdAndPin(String employeeId, String pin) {
     final cleanId = employeeId.trim().toUpperCase();
     final cleanPin = pin.trim();
 
     final user = _nurses.cast<UserModel?>().firstWhere(
-          (u) => u?.employeeId.toUpperCase() == cleanId && u?.pin == cleanPin,
+          (u) =>
+              (u?.employeeId.toUpperCase() == cleanId || u?.email.toUpperCase() == cleanId) &&
+              u?.pin == cleanPin,
           orElse: () => null,
         );
 
     if (user != null) {
       if (!user.isActive) {
-        return false; // Inactive account
+        return false;
       }
       _currentUser = user;
       notifyListeners();
@@ -88,10 +172,11 @@ class AppState extends ChangeNotifier {
 
   void logout() {
     _currentUser = null;
+    _api.setAuthToken(null);
     notifyListeners();
   }
 
-  // --- Admin Nurse Management (Nurses cannot self-register) ---
+  // --- Admin Nurse Management ---
   UserModel createNurse({
     required String employeeId,
     required String name,
@@ -117,7 +202,6 @@ class AppState extends ChangeNotifier {
 
     _nurses.add(newNurse);
 
-    // Add audit notification
     _notifications.insert(
       0,
       NotificationItem(
@@ -153,13 +237,15 @@ class AppState extends ChangeNotifier {
 
   EquipmentModel? getEquipmentByQrOrCode(String code) {
     final clean = code.trim().toUpperCase();
-    return _equipments.cast<EquipmentModel?>().firstWhere(
-          (e) =>
-              e?.qrCode.toUpperCase() == clean ||
-              e?.id.toUpperCase() == clean ||
-              e?.serialNumber.toUpperCase() == clean,
-          orElse: () => null,
-        );
+    for (final e in _equipments) {
+      if (e.qrCode.toUpperCase() == clean ||
+          e.id.toUpperCase() == clean ||
+          e.serialNumber.toUpperCase() == clean ||
+          e.qrCode.toUpperCase().endsWith(clean)) {
+        return e;
+      }
+    }
+    return null;
   }
 
   void updateEquipmentAvailability(String id, EquipmentAvailability newStatus) {
@@ -172,7 +258,6 @@ class AppState extends ChangeNotifier {
         lastUpdatedBy: _currentUser != null ? '${_currentUser!.name} (${_currentUser!.department})' : 'System',
       );
 
-      // Create notification
       _notifications.insert(
         0,
         NotificationItem(
@@ -187,6 +272,11 @@ class AppState extends ChangeNotifier {
       );
 
       notifyListeners();
+
+      // Async backend sync
+      _api.updateEquipment(id, {
+        'status': newStatus.name.toUpperCase(),
+      });
     }
   }
 
@@ -252,14 +342,12 @@ class AppState extends ChangeNotifier {
 
     _complaints.insert(0, newComplaint);
 
-    // If marked missing or out of service, update equipment status
     if (type == ComplaintType.missingEquipment && eq != null) {
       updateEquipmentAvailability(eq.id, EquipmentAvailability.missing);
     } else if (severity == ComplaintSeverity.emergency && eq != null) {
       updateEquipmentAvailability(eq.id, EquipmentAvailability.underMaintenance);
     }
 
-    // Add notification
     _notifications.insert(
       0,
       NotificationItem(
@@ -276,6 +364,20 @@ class AppState extends ChangeNotifier {
     );
 
     notifyListeners();
+
+    // Async backend post
+    _api.createComplaint(
+      equipmentId: equipmentId,
+      equipmentName: newComplaint.equipmentName,
+      equipmentCode: newComplaint.equipmentCode,
+      equipmentCategory: newComplaint.equipmentCategory,
+      type: type,
+      severity: severity,
+      reportedLocation: reportedLocation,
+      description: description,
+      errorCode: errorCode,
+    );
+
     return newComplaint;
   }
 
@@ -318,7 +420,6 @@ class AppState extends ChangeNotifier {
 
       _complaints[index] = updated;
 
-      // Notify the nurse who filed it
       _notifications.insert(
         0,
         NotificationItem(
@@ -335,6 +436,14 @@ class AppState extends ChangeNotifier {
       );
 
       notifyListeners();
+
+      // Async backend update
+      _api.updateComplaintStatus(
+        complaintId: complaintId,
+        status: newStatus,
+        assignedTechName: assignedTech,
+        resolutionSummary: resolution,
+      );
     }
   }
 
@@ -344,6 +453,7 @@ class AppState extends ChangeNotifier {
     if (index != -1 && !_notifications[index].isRead) {
       _notifications[index] = _notifications[index].copyWith(isRead: true);
       notifyListeners();
+      _api.markNotificationRead(id);
     }
   }
 
@@ -354,6 +464,7 @@ class AppState extends ChangeNotifier {
         if (_notifications[i].targetNurseId == null ||
             _notifications[i].targetNurseId == _currentUser?.id) {
           _notifications[i] = _notifications[i].copyWith(isRead: true);
+          _api.markNotificationRead(_notifications[i].id);
           changed = true;
         }
       }

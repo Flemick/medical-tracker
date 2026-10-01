@@ -27,17 +27,29 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
-    setState(() => _errorMessage = null);
+  bool _isLoading = false;
+
+  Future<void> _handleLogin() async {
+    setState(() {
+      _errorMessage = null;
+      _isLoading = true;
+    });
     final id = _employeeIdController.text.trim();
     final pin = _pinController.text.trim();
 
     if (id.isEmpty || pin.isEmpty) {
-      setState(() => _errorMessage = 'Please enter your Employee ID and PIN');
+      setState(() {
+        _errorMessage = 'Please enter your Employee ID / Email and PIN / Password';
+        _isLoading = false;
+      });
       return;
     }
 
-    final success = widget.appState.loginWithIdAndPin(id, pin);
+    final success = await widget.appState.loginWithEmailOrId(id, pin);
+    if (!mounted) return;
+
+    setState(() => _isLoading = false);
+
     if (success) {
       if (widget.appState.isAdmin) {
         Navigator.pushReplacement(
@@ -52,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } else {
       setState(() {
-        _errorMessage = 'Invalid ID or PIN. Contact Administrator for access.';
+        _errorMessage = 'Invalid ID/Email or PIN/Password. Check credentials or backend status.';
       });
     }
   }
@@ -296,15 +308,24 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 48,
                         child: ElevatedButton(
-                          onPressed: _handleLogin,
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Access Nurse Workspace'),
-                              SizedBox(width: 8),
-                              Icon(Icons.arrow_forward_rounded, size: 18),
-                            ],
-                          ),
+                          onPressed: _isLoading ? null : _handleLogin,
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text('Access Workspace'),
+                                    SizedBox(width: 8),
+                                    Icon(Icons.arrow_forward_rounded, size: 18),
+                                  ],
+                                ),
                         ),
                       ),
                     ],
