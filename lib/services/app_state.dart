@@ -5,7 +5,6 @@ import '../models/equipment.dart';
 import '../models/complaint.dart';
 import '../models/notification_item.dart';
 import '../theme/app_theme.dart';
-import 'mock_data.dart';
 import 'api_service.dart';
 
 class AppState extends ChangeNotifier {

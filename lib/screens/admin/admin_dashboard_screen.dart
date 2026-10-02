@@ -8,7 +8,6 @@ import 'nurse_management_screen.dart';
 import '../equipment/equipment_list_screen.dart';
 import '../complaints/complaint_list_screen.dart';
 import '../login_screen.dart';
-import '../nurse_home_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   final AppState appState;
@@ -35,19 +34,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       appBar: AppBar(
         title: const Text('BioMed & Admin Console'),
         actions: [
-          TextButton.icon(
-            onPressed: () {
-              // Switch back to nurse Elena Vance for testing
-              final nurse = widget.appState.nurses.first;
-              widget.appState.loginAs(nurse);
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => NurseHomeScreen(appState: widget.appState)),
-              );
-            },
-            icon: const Icon(Icons.swap_horiz_rounded, color: AppColors.primary, size: 18),
-            label: const Text('Nurse View', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
-          ),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Sign Out',

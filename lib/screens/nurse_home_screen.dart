@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/equipment.dart';
 import '../models/complaint.dart';
-import '../models/user_model.dart';
 import '../services/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/status_badge.dart';
@@ -12,7 +11,6 @@ import 'equipment/qr_scanner_screen.dart';
 import 'complaints/complaint_list_screen.dart';
 import 'complaints/create_complaint_screen.dart';
 import 'notifications/notification_center_screen.dart';
-import 'admin/admin_dashboard_screen.dart';
 import 'login_screen.dart';
 
 class NurseHomeScreen extends StatefulWidget {
@@ -128,39 +126,26 @@ class _NurseHomeDashboardTab extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Switch Nurse / Admin Account',
+                  'User Profile',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
-                ...appState.nurses.map((user) {
-                  final isCurrent = user.id == appState.currentUser?.id;
-                  return ListTile(
+                if (appState.currentUser != null)
+                  ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: CircleAvatar(
                       backgroundColor: AppColors.primarySurface,
                       child: Text(
-                        user.name.substring(0, 1),
+                        appState.currentUser!.name.isNotEmpty ? appState.currentUser!.name.substring(0, 1).toUpperCase() : 'U',
                         style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700),
                       ),
                     ),
                     title: Text(
-                      user.name,
-                      style: TextStyle(fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500),
+                      appState.currentUser!.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    subtitle: Text('${user.department} • ${user.employeeId}'),
-                    trailing: isCurrent ? const Icon(Icons.check_circle_rounded, color: AppColors.primary) : null,
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      appState.loginAs(user);
-                      if (user.role == UserRole.admin) {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => AdminDashboardScreen(appState: appState)),
-                        );
-                      }
-                    },
-                  );
-                }),
+                    subtitle: Text('${appState.currentUser!.department} • ${appState.currentUser!.employeeId}'),
+                  ),
                 const Divider(height: 20),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

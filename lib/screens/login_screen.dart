@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/app_state.dart';
-import '../models/user_model.dart';
 import '../theme/app_theme.dart';
 import 'nurse_home_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
@@ -312,6 +311,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     SizedBox(width: 8),
                                     Icon(Icons.arrow_forward_rounded, size: 18),
                                   ],
+                                ),
+                        ),
                       ),
                     ],
                   ),
