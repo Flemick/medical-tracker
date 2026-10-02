@@ -11,9 +11,8 @@ class ApiService {
   ApiService._internal();
 
   // Configurable base URL:
-  // - Default for Android Emulator: 'http://10.0.2.2:5000'
-  // - Default for Web/Desktop/iOS Simulator: 'http://localhost:5000' or 'http://127.0.0.1:5000'
-  String _baseUrl = kIsWeb ? 'http://localhost:5000' : 'http://10.0.2.2:5000';
+  // Default for Web: 'http://localhost:5000', Mobile (Wi-Fi): 'http://172.16.17.33:5000'
+  String _baseUrl = kIsWeb ? 'http://localhost:5000' : 'http://172.16.17.33:5000';
   String? _authToken;
   bool _isConnected = false;
 
