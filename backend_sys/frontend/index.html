@@ -428,6 +428,10 @@
         .status-available { background: rgba(16, 185, 129, 0.12); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.2); }
         .status-in-use { background: rgba(245, 158, 11, 0.12); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.2); }
         .status-maintenance { background: rgba(239, 68, 68, 0.12); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.2); }
+        .status-missing { background: rgba(239, 68, 68, 0.22); color: #ff4d6d; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 800; }
+        .status-emergency { background: rgba(220, 38, 38, 0.28); color: #ff3366; border: 1px solid rgba(220, 38, 38, 0.55); font-weight: 800; animation: pulseGlow 1.5s infinite ease-in-out; }
+        .status-review { background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); border: 1px solid rgba(56, 189, 248, 0.3); }
+        .status-info { background: rgba(99, 102, 241, 0.15); color: var(--accent-blue); border: 1px solid rgba(99, 102, 241, 0.3); }
 
         /* MODALS */
         .modal-backdrop {
@@ -535,6 +539,7 @@
 
         <div class="nav-section-label">Core Operations</div>
         <div class="nav-link active" onclick="switchTab(event, 'dashboard')"><span>📊</span> Overview Monitor</div>
+        <div class="nav-link" id="nav-complaints" onclick="switchTab(event, 'complaints')"><span>⚠️</span> Incident Reports <span id="complaints-badge" style="display:none; background: var(--accent-red); color: white; border-radius: 12px; padding: 2px 7px; font-size: 0.72rem; margin-left: 6px; font-weight: 700;">0</span></div>
         <div class="nav-link" onclick="switchTab(event, 'equipment')"><span>🩺</span> Medical Equipment</div>
         <div class="nav-link" onclick="switchTab(event, 'locations')"><span>📍</span> Clinical Wards & Rooms</div>
         <div class="nav-link" onclick="switchTab(event, 'maintenance')"><span>🔧</span> Maintenance Operations</div>
@@ -578,9 +583,13 @@
                     <div class="metric-label">Under Maintenance</div>
                     <div class="metric-value" id="stat-maint-eq" style="color: var(--accent-red);">0</div>
                 </div>
+                <div class="metric-card" onclick="switchTab(null, 'complaints')" style="cursor: pointer;" title="Click to view Incident Reports">
+                    <div class="metric-label">⚠️ Active Reports / Missing</div>
+                    <div class="metric-value" id="stat-open-complaints" style="color: var(--accent-amber);">0</div>
+                </div>
                 <div class="metric-card">
                     <div class="metric-label">Monitored Locations</div>
-                    <div class="metric-value" id="stat-loc-count" style="color: var(--accent-amber);">0</div>
+                    <div class="metric-value" id="stat-loc-count" style="color: var(--accent-cyan);">0</div>
                 </div>
             </div>
         </div>
@@ -661,6 +670,42 @@
                         </tr>
                     </thead>
                     <tbody id="maintenance-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- COMPLAINTS & INCIDENT REPORTS TAB -->
+        <div id="tab-complaints" class="tab-pane" style="display: none;">
+            <div class="page-header">
+                <div>
+                    <h1>Clinical Complaints & Incident Reports</h1>
+                    <p style="color: var(--text-sub); font-size: 0.9rem;">Review equipment breakdowns, missing device alerts, and blocked assets reported by nursing staff</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" style="width: auto; padding: 0.7rem 1.2rem; margin-top: 0;" onclick="loadComplaints()">🔄 Refresh Reports</button>
+                </div>
+            </div>
+
+            <!-- SEARCH / FILTER BAR -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <input type="text" id="complaints-search-input" placeholder="🔍 Search reports by Ticket #, Nurse, Equipment, or Status..." onkeyup="filterComplaintsList()" style="padding: 0.95rem 1.2rem; border-radius: 14px; font-size: 0.95rem; background: var(--bg-card); border: 1px solid var(--border);">
+            </div>
+
+            <div class="card-table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ticket / Date</th>
+                            <th>Equipment / Tag</th>
+                            <th>Report Type</th>
+                            <th>Severity</th>
+                            <th>Reported By / Ward</th>
+                            <th>Issue Description</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="complaints-table-body"></tbody>
                 </table>
             </div>
         </div>
@@ -857,6 +902,57 @@
         </div>
     </div>
 
+    <!-- MODAL: REVIEW COMPLAINT / REPORT -->
+    <div id="modal-complaint-review" class="modal-backdrop">
+        <div class="modal-content" style="max-width: 540px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 id="modal-cmp-title" style="margin-bottom: 0;">Incident Report Details</h3>
+                <span id="modal-cmp-badge" class="status-pill status-in-use">SUBMITTED</span>
+            </div>
+            
+            <input type="hidden" id="modal-cmp-id">
+
+            <div style="background: rgba(10, 15, 29, 0.6); padding: 1rem; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 1.2rem; font-size: 0.85rem;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 0.8rem;">
+                    <div><span style="color: var(--text-sub);">Equipment:</span> <strong id="modal-cmp-eq" style="color: var(--accent-cyan);">-</strong></div>
+                    <div><span style="color: var(--text-sub);">Location:</span> <strong id="modal-cmp-loc">-</strong></div>
+                    <div><span style="color: var(--text-sub);">Reporter:</span> <strong id="modal-cmp-nurse">-</strong></div>
+                    <div><span style="color: var(--text-sub);">Severity:</span> <strong id="modal-cmp-severity">-</strong></div>
+                </div>
+                <div style="border-top: 1px solid var(--border); padding-top: 0.6rem;">
+                    <span style="color: var(--text-sub);">Description / Notes:</span>
+                    <div id="modal-cmp-desc" style="color: var(--text-main); margin-top: 0.3rem; line-height: 1.4; background: rgba(0,0,0,0.25); padding: 0.6rem; border-radius: 8px;">-</div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Update Report Status</label>
+                <select id="modal-cmp-status" style="width: 100%; padding: 0.8rem; border-radius: 10px; background: rgba(10, 15, 29, 0.8); color: var(--text-main); border: 1px solid var(--border);">
+                    <option value="SUBMITTED">SUBMITTED (Pending Review)</option>
+                    <option value="UNDER_REVIEW">UNDER REVIEW</option>
+                    <option value="IN_PROGRESS">IN PROGRESS (BioMed Tech Dispatched)</option>
+                    <option value="RESOLVED">RESOLVED (Issue Fixed / Device Found)</option>
+                    <option value="REJECTED">REJECTED / CLOSED</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Assigned BioMed Technician</label>
+                <input type="text" id="modal-cmp-tech" placeholder="e.g. Alex Henderson (BioMed Lead)">
+            </div>
+
+            <div class="form-group">
+                <label>Resolution / Action Notes</label>
+                <textarea id="modal-cmp-notes" rows="3" placeholder="Describe the resolution or action taken..." style="width: 100%; padding: 0.8rem; border-radius: 10px; background: rgba(10, 15, 29, 0.8); color: var(--text-main); border: 1px solid var(--border);"></textarea>
+            </div>
+
+            <div style="display: flex; gap: 0.8rem; margin-top: 1.2rem;">
+                <button class="btn" style="flex: 1;" onclick="handleSaveComplaintStatus()">Save Status Update</button>
+                <button class="btn btn-secondary" style="flex: 1; margin-top: 0;" onclick="closeModal('modal-complaint-review')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let authToken = localStorage.getItem('access_token');
         let currentProfile = null;
@@ -952,8 +1048,13 @@
             document.getElementById(`tab-${tabName}`).style.display = 'block';
             if (evt && evt.currentTarget) {
                 evt.currentTarget.classList.add('active');
+            } else {
+                const matchingNav = document.getElementById(`nav-${tabName}`);
+                if (matchingNav) matchingNav.classList.add('active');
             }
 
+            if (tabName === 'dashboard') loadDashboardStats();
+            if (tabName === 'complaints') loadComplaints();
             if (tabName === 'users') loadUsers();
             if (tabName === 'equipment') loadEquipment();
             if (tabName === 'locations') loadLocations();
@@ -961,25 +1062,213 @@
         }
 
         async function loadDashboardStats() {
-            const res = await fetch('/api/equipment', { headers: { 'Authorization': `Bearer ${authToken}` } });
-            const locRes = await fetch('/api/locations', { headers: { 'Authorization': `Bearer ${authToken}` } });
-            
-            if (res.ok) {
-                const data = await res.json();
-                const total = data.count || 0;
-                const avail = data.data.filter(e => e.status === 'AVAILABLE').length;
-                const maint = data.data.filter(e => e.maintenance_status === 'UNDER_MAINTENANCE').length;
+            try {
+                const res = await fetch('/api/equipment', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const locRes = await fetch('/api/locations', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const cmpRes = await fetch('/api/complaints', { headers: { 'Authorization': `Bearer ${authToken}` } });
                 
-                document.getElementById('stat-total-eq').innerText = total;
-                document.getElementById('stat-avail-eq').innerText = avail;
-                document.getElementById('stat-maint-eq').innerText = maint;
-            }
+                if (res.ok) {
+                    const data = await res.json();
+                    const total = data.count || 0;
+                    const avail = (data.data || []).filter(e => e.status === 'AVAILABLE').length;
+                    const maint = (data.data || []).filter(e => e.maintenance_status === 'UNDER_MAINTENANCE' || e.status === 'MISSING').length;
+                    
+                    document.getElementById('stat-total-eq').innerText = total;
+                    document.getElementById('stat-avail-eq').innerText = avail;
+                    document.getElementById('stat-maint-eq').innerText = maint;
+                }
 
-            if (locRes.ok) {
-                const locData = await locRes.json();
-                document.getElementById('stat-loc-count').innerText = locData.data ? locData.data.length : 0;
+                if (locRes.ok) {
+                    const locData = await locRes.json();
+                    document.getElementById('stat-loc-count').innerText = locData.data ? locData.data.length : 0;
+                }
+
+                if (cmpRes.ok) {
+                    const cmpData = await cmpRes.json();
+                    const complaints = cmpData.data || [];
+                    const openCount = complaints.filter(c => c.status !== 'RESOLVED' && c.status !== 'REJECTED').length;
+                    
+                    const statCmpEl = document.getElementById('stat-open-complaints');
+                    if (statCmpEl) statCmpEl.innerText = openCount;
+
+                    const badgeEl = document.getElementById('complaints-badge');
+                    if (badgeEl) {
+                        badgeEl.innerText = openCount;
+                        badgeEl.style.display = openCount > 0 ? 'inline-block' : 'none';
+                    }
+                }
+            } catch (err) {
+                console.error("Dashboard stats refresh error:", err);
             }
         }
+
+        let cachedComplaintsList = [];
+
+        async function loadComplaints() {
+            const tbody = document.getElementById('complaints-table-body');
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-sub); padding: 2rem;">Loading latest reports...</td></tr>`;
+            try {
+                const res = await fetch('/api/complaints', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    cachedComplaintsList = data.data || [];
+                    renderComplaintsTable(cachedComplaintsList);
+                    loadDashboardStats();
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--accent-red); padding: 2rem;">Failed to load complaints from database.</td></tr>`;
+                }
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--accent-red); padding: 2rem;">Network error fetching reports.</td></tr>`;
+            }
+        }
+
+        function renderComplaintsTable(items) {
+            const tbody = document.getElementById('complaints-table-body');
+            tbody.innerHTML = '';
+            if (!items || items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-sub); padding: 2rem;">No incident reports logged. All systems running normally! ✨</td></tr>`;
+                return;
+            }
+
+            items.forEach(c => {
+                const dateStr = c.created_at ? new Date(c.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now';
+                const eqDisplay = c.equipment_name ? c.equipment_name : (c.equipment_code || 'Medical Device');
+                const tagDisplay = c.equipment_code ? `<div style="font-size: 0.75rem; color: var(--text-sub);">Tag: ${c.equipment_code}</div>` : '';
+
+                // Report type badge
+                let typePill = '<span class="status-pill status-in-use">⚠️ Problem</span>';
+                const t = (c.type || '').toUpperCase();
+                if (t.includes('MISSING')) {
+                    typePill = '<span class="status-pill status-missing">🚨 Missing Device</span>';
+                } else if (t.includes('UNAVAILABLE') || t.includes('BLOCK')) {
+                    typePill = '<span class="status-pill status-review">🔒 Unavailable</span>';
+                }
+
+                // Severity badge
+                let sevPill = '<span class="status-pill status-available">Low</span>';
+                const s = (c.severity || '').toUpperCase();
+                if (s === 'EMERGENCY' || s === 'CRITICAL') {
+                    sevPill = '<span class="status-pill status-emergency">⚡ EMERGENCY</span>';
+                } else if (s === 'HIGH') {
+                    sevPill = '<span class="status-pill status-maintenance">🔴 High</span>';
+                } else if (s === 'MEDIUM') {
+                    sevPill = '<span class="status-pill status-in-use">🟠 Medium</span>';
+                }
+
+                // Status badge
+                let statusPill = '<span class="status-pill status-in-use">SUBMITTED</span>';
+                const st = (c.status || '').toUpperCase();
+                if (st === 'RESOLVED') {
+                    statusPill = '<span class="status-pill status-available">✅ RESOLVED</span>';
+                } else if (st === 'IN_PROGRESS') {
+                    statusPill = '<span class="status-pill status-review">🔄 IN PROGRESS</span>';
+                } else if (st === 'UNDER_REVIEW') {
+                    statusPill = '<span class="status-pill status-info">🔍 UNDER REVIEW</span>';
+                } else if (st === 'REJECTED') {
+                    statusPill = '<span class="status-pill status-maintenance">❌ REJECTED</span>';
+                }
+
+                const desc = c.description || '-';
+                const errSnippet = c.error_code ? `<div style="font-size: 0.75rem; color: var(--accent-red); font-family: monospace;">Err: ${c.error_code}</div>` : '';
+                const reporter = `<strong>${c.nurse_name || 'Staff'}</strong><div style="font-size: 0.75rem; color: var(--text-sub);">${c.nurse_department || c.reported_location || 'Ward'}</div>`;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>
+                            <strong style="color: var(--accent-cyan);">${c.ticket_number || 'CMP'}</strong>
+                            <div style="font-size: 0.75rem; color: var(--text-sub);">${dateStr}</div>
+                        </td>
+                        <td>
+                            <strong>${eqDisplay}</strong>
+                            ${tagDisplay}
+                        </td>
+                        <td>${typePill}</td>
+                        <td>${sevPill}</td>
+                        <td>${reporter}</td>
+                        <td>
+                            <div style="max-width: 260px; line-height: 1.35; font-size: 0.85rem;">${desc}</div>
+                            ${errSnippet}
+                        </td>
+                        <td>${statusPill}</td>
+                        <td>
+                            <button class="action-btn action-edit" onclick="openComplaintReviewModal('${c.id}')">Review / Action</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function filterComplaintsList() {
+            const query = (document.getElementById('complaints-search-input').value || '').toLowerCase().trim();
+            if (!query) {
+                renderComplaintsTable(cachedComplaintsList);
+                return;
+            }
+            const filtered = cachedComplaintsList.filter(c => {
+                const tNum = (c.ticket_number || '').toLowerCase();
+                const eqName = (c.equipment_name || '').toLowerCase();
+                const nurse = (c.nurse_name || '').toLowerCase();
+                const desc = (c.description || '').toLowerCase();
+                const status = (c.status || '').toLowerCase();
+                const type = (c.type || '').toLowerCase();
+                return tNum.includes(query) || eqName.includes(query) || nurse.includes(query) || desc.includes(query) || status.includes(query) || type.includes(query);
+            });
+            renderComplaintsTable(filtered);
+        }
+
+        function openComplaintReviewModal(complaintId) {
+            const c = cachedComplaintsList.find(x => x.id === complaintId);
+            if (!c) return;
+
+            document.getElementById('modal-cmp-id').value = c.id;
+            document.getElementById('modal-cmp-title').innerText = `Report #${c.ticket_number || 'Details'}`;
+            document.getElementById('modal-cmp-badge').innerText = (c.status || 'SUBMITTED').toUpperCase();
+            document.getElementById('modal-cmp-badge').className = `status-pill ${c.status === 'RESOLVED' ? 'status-available' : 'status-in-use'}`;
+
+            document.getElementById('modal-cmp-eq').innerText = `${c.equipment_name || 'Device'} (${c.equipment_code || '-'})`;
+            document.getElementById('modal-cmp-loc').innerText = c.reported_location || c.nurse_department || 'Clinical Ward';
+            document.getElementById('modal-cmp-nurse').innerText = `${c.nurse_name || 'Staff'} (${c.nurse_department || 'Nursing'})`;
+            document.getElementById('modal-cmp-severity').innerText = `${c.severity || 'MEDIUM'} • ${c.type || 'PROBLEM'}`;
+            document.getElementById('modal-cmp-desc').innerText = c.description || 'No description provided.';
+
+            document.getElementById('modal-cmp-status').value = c.status || 'SUBMITTED';
+            document.getElementById('modal-cmp-tech').value = c.assigned_tech_name || '';
+            document.getElementById('modal-cmp-notes').value = c.resolution_summary || '';
+
+            document.getElementById('modal-complaint-review').style.display = 'flex';
+        }
+
+        async function handleSaveComplaintStatus() {
+            const id = document.getElementById('modal-cmp-id').value;
+            const status = document.getElementById('modal-cmp-status').value;
+            const assigned_tech_name = document.getElementById('modal-cmp-tech').value.trim();
+            const resolution_summary = document.getElementById('modal-cmp-notes').value.trim();
+
+            try {
+                const res = await fetch(`/api/complaints/${id}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ status, assigned_tech_name, resolution_summary })
+                });
+
+                if (res.ok) {
+                    closeModal('modal-complaint-review');
+                    loadComplaints();
+                } else {
+                    alert("Failed to update report status.");
+                }
+            } catch (err) {
+                alert("Network error updating report.");
+            }
+        }
+
+        // Live Auto-Sync Every 10 Seconds
+        setInterval(() => {
+            if (authToken) {
+                loadDashboardStats();
+            }
+        }, 10000);
 
         async function loadUsers() {
             const res = await fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${authToken}` } });

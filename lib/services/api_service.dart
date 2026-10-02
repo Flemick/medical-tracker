@@ -141,6 +141,10 @@ class ApiService {
     required String description,
     String? errorCode,
   }) async {
+    String typeStr = 'EQUIPMENT_PROBLEM';
+    if (type == ComplaintType.missingEquipment) typeStr = 'MISSING_EQUIPMENT';
+    if (type == ComplaintType.unavailableEquipment) typeStr = 'UNAVAILABLE_EQUIPMENT';
+
     try {
       final res = await http.post(
         Uri.parse('$_baseUrl/api/complaints'),
@@ -150,7 +154,7 @@ class ApiService {
           'equipment_name': equipmentName,
           'equipment_code': equipmentCode,
           'equipment_category': equipmentCategory,
-          'type': type.name.toUpperCase(),
+          'type': typeStr,
           'severity': severity.name.toUpperCase(),
           'reported_location': reportedLocation,
           'description': description,
@@ -307,6 +311,14 @@ class ApiService {
     if (sevStr == 'HIGH') sev = ComplaintSeverity.high;
     if (sevStr == 'EMERGENCY' || sevStr == 'CRITICAL') sev = ComplaintSeverity.emergency;
 
+    final rawType = (json['type'] ?? 'EQUIPMENT_PROBLEM').toString().toUpperCase();
+    ComplaintType type = ComplaintType.equipmentProblem;
+    if (rawType.contains('MISSING')) {
+      type = ComplaintType.missingEquipment;
+    } else if (rawType.contains('UNAVAILABLE') || rawType.contains('BLOCK')) {
+      type = ComplaintType.unavailableEquipment;
+    }
+
     return ComplaintModel(
       id: json['id']?.toString() ?? '',
       ticketNumber: json['ticket_number']?.toString() ?? 'CMP-1001',
@@ -314,7 +326,7 @@ class ApiService {
       equipmentName: json['equipment_name']?.toString() ?? 'Medical Equipment',
       equipmentCode: json['equipment_code']?.toString() ?? 'EQ-001',
       equipmentCategory: json['equipment_category']?.toString() ?? 'General',
-      type: ComplaintType.equipmentProblem,
+      type: type,
       severity: sev,
       status: status,
       nurseId: json['nurse_id']?.toString() ?? '',

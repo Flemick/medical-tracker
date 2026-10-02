@@ -553,7 +553,14 @@ def create_app():
         severity = data.get('severity', 'MEDIUM').upper()
         reported_location = data.get('reported_location', '')
         error_code = data.get('error_code', '')
-        complaint_type = data.get('type', 'EQUIPMENT_PROBLEM')
+
+        raw_type = str(data.get('type', 'EQUIPMENT_PROBLEM')).upper().replace('_', '').replace(' ', '')
+        if 'MISSING' in raw_type:
+            complaint_type = 'MISSING_EQUIPMENT'
+        elif 'UNAVAILABLE' in raw_type or 'BLOCK' in raw_type:
+            complaint_type = 'UNAVAILABLE_EQUIPMENT'
+        else:
+            complaint_type = 'EQUIPMENT_PROBLEM'
 
         if not equipment_id or not description:
             return jsonify({"error": "Bad Request", "message": "equipment_id and description are required."}), 400
@@ -564,13 +571,29 @@ def create_app():
 
         try:
             import time
+            import uuid
             ticket_num = f"CMP-{int(time.time()) % 10000:04d}"
+
+            # Safely validate equipment UUID for postgres foreign key
+            valid_equipment_uuid = None
+            if equipment_id:
+                try:
+                    uuid.UUID(str(equipment_id))
+                    valid_equipment_uuid = str(equipment_id)
+                except Exception:
+                    try:
+                        eq_lookup = db.table('equipment').select('equipment_id').or_(f'equipment_id.eq.{equipment_id},qr_code.eq.{equipment_id}').execute()
+                        if eq_lookup.data and len(eq_lookup.data) > 0:
+                            valid_equipment_uuid = eq_lookup.data[0]['equipment_id']
+                    except Exception:
+                        pass
+
             complaint_payload = {
                 "ticket_number": ticket_num,
-                "equipment_id": equipment_id,
-                "equipment_name": equipment_name,
-                "equipment_code": equipment_code,
-                "equipment_category": equipment_category,
+                "equipment_id": valid_equipment_uuid,
+                "equipment_name": equipment_name or 'Medical Equipment',
+                "equipment_code": equipment_code or str(equipment_id),
+                "equipment_category": equipment_category or 'General',
                 "type": complaint_type,
                 "severity": severity,
                 "status": "SUBMITTED",
@@ -583,11 +606,21 @@ def create_app():
             }
             res = db.table('complaints').insert(complaint_payload).execute()
 
+            # Sync equipment inventory state if critical or missing
+            if valid_equipment_uuid:
+                try:
+                    if complaint_type == 'MISSING_EQUIPMENT':
+                        db.table('equipment').update({"status": "MISSING", "maintenance_status": "CRITICAL_MISSING"}).eq('equipment_id', valid_equipment_uuid).execute()
+                    elif severity == 'EMERGENCY':
+                        db.table('equipment').update({"maintenance_status": "UNDER_MAINTENANCE"}).eq('equipment_id', valid_equipment_uuid).execute()
+                except Exception:
+                    pass
+
             # Broadcast notification
             try:
                 db.table('notifications').insert({
                     "title": f"New Complaint: {ticket_num}",
-                    "message": f"{nurse_name} reported {severity} issue for {equipment_name or equipment_id}",
+                    "message": f"{nurse_name} reported {severity} ({complaint_type}) for {equipment_name or equipment_id}",
                     "type": "COMPLAINT",
                     "severity": severity,
                     "target_role": "ADMIN",
