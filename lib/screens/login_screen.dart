@@ -277,7 +277,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextField(
                         controller: _pinController,
                         obscureText: _obscurePin,
-                        keyboardType: TextInputType.number,
+                        keyboardType: TextInputType.text,
                         decoration: InputDecoration(
                           prefixIcon: const Icon(Icons.lock_outline_rounded,
                               color: AppColors.primary, size: 20),
@@ -293,7 +293,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               setState(() => _obscurePin = !_obscurePin);
                             },
                           ),
-                          hintText: 'Enter 4-digit PIN',
+                          hintText: 'Enter Password or PIN',
                           hintStyle: TextStyle(
                             color: AppColors.textLight.withValues(alpha: 0.8),
                             fontSize: 13,
