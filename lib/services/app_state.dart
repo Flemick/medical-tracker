@@ -66,8 +66,8 @@ class AppState extends ChangeNotifier {
     _equipments = MockData.getEquipments();
     _complaints = MockData.getComplaints();
     _notifications = MockData.getNotifications();
-    // Default initial preview user
-    _currentUser = _nurses.firstWhere((n) => n.id == 'nurse-1');
+    // Do not auto-login: start at LoginScreen
+    _currentUser = null;
   }
 
   void setApiBaseUrl(String newUrl) {

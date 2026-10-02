@@ -15,8 +15,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _employeeIdController = TextEditingController(text: 'NUR-1042');
-  final _pinController = TextEditingController(text: '1234');
+  final _employeeIdController = TextEditingController();
+  final _pinController = TextEditingController();
   bool _obscurePin = true;
   String? _errorMessage;
 
