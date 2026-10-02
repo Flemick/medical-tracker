@@ -110,64 +110,6 @@ class _NurseHomeDashboardTab extends StatelessWidget {
     required this.onNavigateTab,
   });
 
-  void _showProfileSwitchSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      backgroundColor: Colors.white,
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'User Profile',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                if (appState.currentUser != null)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      backgroundColor: AppColors.primarySurface,
-                      child: Text(
-                        appState.currentUser!.name.isNotEmpty ? appState.currentUser!.name.substring(0, 1).toUpperCase() : 'U',
-                        style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    title: Text(
-                      appState.currentUser!.name,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text('${appState.currentUser!.department} • ${appState.currentUser!.employeeId}'),
-                  ),
-                const Divider(height: 20),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.logout_rounded, color: Colors.red),
-                  title: const Text('Sign Out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    appState.logout();
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => LoginScreen(appState: appState)),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final nurse = appState.currentUser;
@@ -201,9 +143,15 @@ class _NurseHomeDashboardTab extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded),
-            tooltip: 'Switch User Profile',
-            onPressed: () => _showProfileSwitchSheet(context),
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Sign Out',
+            onPressed: () {
+              appState.logout();
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => LoginScreen(appState: appState)),
+              );
+            },
           ),
           IconButton(
             icon: Badge(
@@ -273,23 +221,7 @@ class _NurseHomeDashboardTab extends StatelessWidget {
                           ],
                         ),
                       ),
-                      InkWell(
-                        onTap: () => _showProfileSwitchSheet(context),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            children: [
-                              Text('Switch', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
-                              Icon(Icons.arrow_drop_down_rounded, color: Colors.white, size: 16),
-                            ],
-                          ),
-                        ),
-                      ),
+
                     ],
                   ),
                   const SizedBox(height: 14),
