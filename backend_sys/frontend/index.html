@@ -1097,6 +1097,11 @@
                         badgeEl.style.display = openCount > 0 ? 'inline-block' : 'none';
                     }
                 }
+
+                if (res.status === 401 || locRes.status === 401 || cmpRes.status === 401) {
+                    handleLogout();
+                    return;
+                }
             } catch (err) {
                 console.error("Dashboard stats refresh error:", err);
             }
