@@ -44,7 +44,14 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Environment & cloned subprojects
+# Environment & Python backend ignores
 .env
-backend_sys/
+.env.*
+backend_sys/.env
+backend_sys/.env.*
+backend_sys/venv/
+backend_sys/env/
+backend_sys/**/__pycache__/
+backend_sys/**/*.py[cod]
+
 

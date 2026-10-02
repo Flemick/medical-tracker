@@ -86,17 +86,17 @@ class AppState extends ChangeNotifier {
 
       if (healthy) {
         final remoteEquipment = await _api.fetchEquipment();
-        if (remoteEquipment != null && remoteEquipment.isNotEmpty) {
+        if (remoteEquipment != null) {
           _equipments = remoteEquipment;
         }
 
         final remoteComplaints = await _api.fetchComplaints();
-        if (remoteComplaints != null && remoteComplaints.isNotEmpty) {
+        if (remoteComplaints != null) {
           _complaints = remoteComplaints;
         }
 
         final remoteNotifs = await _api.fetchNotifications();
-        if (remoteNotifs != null && remoteNotifs.isNotEmpty) {
+        if (remoteNotifs != null) {
           _notifications = remoteNotifs;
         }
       }
@@ -167,7 +167,9 @@ class AppState extends ChangeNotifier {
 
   void loginAs(UserModel user) {
     _currentUser = user;
+    _api.setAuthToken(user.role == UserRole.admin ? 'dev-token-admin' : 'dev-token-nurse');
     notifyListeners();
+    syncWithBackend();
   }
 
   void logout() {

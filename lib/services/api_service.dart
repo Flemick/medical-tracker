@@ -13,7 +13,7 @@ class ApiService {
   // Configurable base URL:
   // Default for Web: 'http://localhost:5000', Mobile (Wi-Fi): 'http://172.16.17.33:5000'
   String _baseUrl = kIsWeb ? 'http://localhost:5000' : 'http://172.16.17.33:5000';
-  String? _authToken;
+  String? _authToken = 'dev-token-nurse';
   bool _isConnected = false;
 
   String get baseUrl => _baseUrl;
@@ -235,7 +235,8 @@ class ApiService {
   EquipmentModel _parseEquipment(Map<String, dynamic> json) {
     final locationData = json['locations'] as Map<String, dynamic>? ?? {};
     final qrDataList = json['qr_codes'] as List? ?? [];
-    String qrCodeVal = json['equipment_id']?.toString().substring(0, 8) ?? 'EQ-001';
+    final idStr = json['equipment_id']?.toString() ?? '';
+    String qrCodeVal = idStr.length >= 8 ? idStr.substring(0, 8) : (idStr.isNotEmpty ? idStr : 'EQ-001');
     if (qrDataList.isNotEmpty) {
       qrCodeVal = qrDataList.first['qr_url'] ?? qrCodeVal;
     }
