@@ -39,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (id.isEmpty || pin.isEmpty) {
       setState(() {
-        _errorMessage = 'Please enter your Employee ID / Email and PIN / Password';
+        _errorMessage = 'Please enter your Username and Password';
         _isLoading = false;
       });
       return;
@@ -64,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } else {
       setState(() {
-        _errorMessage = 'Invalid ID/Email or PIN/Password. Check credentials or backend status.';
+        _errorMessage = 'Invalid Username or Password. Check credentials or backend status.';
       });
     }
   }
@@ -239,9 +239,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
 
-                      // Employee ID Field
+                      // Username Field
                       const Text(
-                        'Employee ID',
+                        'Username',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -251,11 +251,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 6),
                       TextField(
                         controller: _employeeIdController,
-                        textCapitalization: TextCapitalization.characters,
+                        textCapitalization: TextCapitalization.none,
+                        autocorrect: false,
+                        keyboardType: TextInputType.text,
                         decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.badge_outlined,
+                          prefixIcon: const Icon(Icons.person_outline_rounded,
                               color: AppColors.primary, size: 20),
-                          hintText: 'e.g. NUR-1042',
+                          hintText: 'Enter your username or email',
                           hintStyle: TextStyle(
                             color: AppColors.textLight.withValues(alpha: 0.8),
                             fontSize: 13,
