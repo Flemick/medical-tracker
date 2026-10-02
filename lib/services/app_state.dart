@@ -62,11 +62,10 @@ class AppState extends ChangeNotifier {
   }
 
   void _initializeData() {
-    _nurses = MockData.getNurses();
-    _equipments = MockData.getEquipments();
-    _complaints = MockData.getComplaints();
-    _notifications = MockData.getNotifications();
-    // Do not auto-login: start at LoginScreen
+    _nurses = [];
+    _equipments = [];
+    _complaints = [];
+    _notifications = [];
     _currentUser = null;
   }
 
@@ -110,10 +109,10 @@ class AppState extends ChangeNotifier {
 
   // --- Auth Operations ---
   Future<bool> loginWithEmailOrId(String identifier, String passwordOrPin) async {
-    final cleanId = identifier.trim().toLowerCase();
+    final cleanId = identifier.trim();
     final cleanPass = passwordOrPin.trim();
 
-    // 1. Try remote API login
+    // Authenticate with remote Supabase API
     final loginRes = await _api.login(cleanId, cleanPass);
     if (loginRes != null) {
       final profile = loginRes['profile'] as Map<String, dynamic>?;
@@ -122,15 +121,15 @@ class AppState extends ChangeNotifier {
 
       _currentUser = UserModel(
         id: profile?['id']?.toString() ?? 'user-1',
-        employeeId: cleanId.contains('@') ? cleanId.split('@')[0].toUpperCase() : cleanId.toUpperCase(),
-        name: profile?['name']?.toString() ?? 'Hospital Staff',
-        email: cleanId.contains('@') ? cleanId : '$cleanId@medipulse.org',
-        department: profile?['department']?.toString() ?? 'Cardiology & ICU',
-        roleTitle: role == UserRole.admin ? 'Biomedical Ops Admin' : 'Staff Nurse',
-        shift: 'Morning (07:00 - 15:00)',
+        employeeId: profile?['employee_id']?.toString() ?? (cleanId.contains('@') ? cleanId.split('@')[0] : cleanId),
+        name: profile?['name']?.toString() ?? 'Staff Member',
+        email: profile?['email']?.toString() ?? (cleanId.contains('@') ? cleanId : '$cleanId@hospital.org'),
+        department: profile?['department']?.toString() ?? 'General Care',
+        roleTitle: role == UserRole.admin ? 'Administrator' : 'Staff Nurse',
+        shift: profile?['shift']?.toString() ?? 'Standard Shift',
         role: role,
         pin: cleanPass,
-        isActive: true,
+        isActive: profile?['is_active'] ?? true,
         createdAt: DateTime.now(),
       );
       _isOnline = true;
@@ -139,37 +138,7 @@ class AppState extends ChangeNotifier {
       return true;
     }
 
-    // 2. Fallback to local nurse & admin list
-    return loginWithIdAndPin(identifier, passwordOrPin);
-  }
-
-  bool loginWithIdAndPin(String employeeId, String pin) {
-    final cleanId = employeeId.trim().toUpperCase();
-    final cleanPin = pin.trim();
-
-    final user = _nurses.cast<UserModel?>().firstWhere(
-          (u) =>
-              (u?.employeeId.toUpperCase() == cleanId || u?.email.toUpperCase() == cleanId) &&
-              u?.pin == cleanPin,
-          orElse: () => null,
-        );
-
-    if (user != null) {
-      if (!user.isActive) {
-        return false;
-      }
-      _currentUser = user;
-      notifyListeners();
-      return true;
-    }
     return false;
-  }
-
-  void loginAs(UserModel user) {
-    _currentUser = user;
-    _api.setAuthToken(user.role == UserRole.admin ? 'dev-token-admin' : 'dev-token-nurse');
-    notifyListeners();
-    syncWithBackend();
   }
 
   void logout() {

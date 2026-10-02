@@ -13,7 +13,7 @@ class ApiService {
   // Configurable base URL:
   // Default for Web: 'http://localhost:5000', Mobile (Wi-Fi): 'http://172.16.17.33:5000'
   String _baseUrl = kIsWeb ? 'http://localhost:5000' : 'http://172.16.17.33:5000';
-  String? _authToken = 'dev-token-nurse';
+  String? _authToken;
   bool _isConnected = false;
 
   String get baseUrl => _baseUrl;

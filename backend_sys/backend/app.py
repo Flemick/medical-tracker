@@ -131,54 +131,27 @@ def create_app():
     @app.route('/api/auth/login', methods=['POST'])
     def login():
         data = request.get_json() or {}
-        email = data.get('email')
+        email = data.get('email') or data.get('username')
         password = data.get('password')
 
         if not email or not password:
-            return jsonify({"error": "Bad Request", "message": "Email and password are required."}), 400
+            return jsonify({"error": "Bad Request", "message": "Username/Email and password are required."}), 400
 
-        clean_email = email.lower().strip()
-        clean_pass = str(password).strip()
+        login_input = str(email).strip()
+        auth_email = login_input
 
-        # Admin Demo / Dev accounts
-        if clean_email in ['admin@medipulse.org', 'adm-001', 'biomed.admin@stjude-hospital.org'] and clean_pass in ['admin123', '9999', '1234']:
-            return jsonify({
-                "message": "Admin Login Successful",
-                "access_token": "dev-token-admin",
-                "user": {
-                    "id": "00000000-0000-0000-0000-000000000000",
-                    "email": "biomed.admin@stjude-hospital.org"
-                },
-                "profile": {
-                    "id": "00000000-0000-0000-0000-000000000000",
-                    "name": "Dr. Arthur Pendelton",
-                    "role": "ADMIN",
-                    "department": "BioMedical Engineering & Ops",
-                    "is_active": True
-                }
-            }), 200
-
-        # Nurse Demo / Dev accounts
-        if clean_email in ['nurse@medipulse.org', 'sarah.jenkins@medipulse.org', 'nur-1042', 'nur-2089', 'nur-3015', 'nur-4022', 'elena.vance@stjude-hospital.org'] and clean_pass in ['nurse123', '1234']:
-            return jsonify({
-                "message": "Nurse Login Successful",
-                "access_token": "dev-token-nurse",
-                "user": {
-                    "id": "11111111-1111-1111-1111-111111111111",
-                    "email": "elena.vance@stjude-hospital.org"
-                },
-                "profile": {
-                    "id": "11111111-1111-1111-1111-111111111111",
-                    "name": "Elena Vance, RN",
-                    "role": "NURSE",
-                    "department": "ICU - Intensive Care",
-                    "is_active": True
-                }
-            }), 200
+        # If user entered a username / employee_id instead of full email
+        if '@' not in login_input:
+            try:
+                prof_check = db.table('profiles').select('email').or_(f"employee_id.eq.{login_input},name.eq.{login_input}").limit(1).execute()
+                if prof_check.data and prof_check.data[0].get('email'):
+                    auth_email = prof_check.data[0]['email']
+            except Exception:
+                pass
 
         try:
             res = supabase.auth.sign_in_with_password({
-                "email": email,
+                "email": auth_email,
                 "password": password
             })
             

@@ -23,33 +23,7 @@ def get_auth_token():
 
 
 def get_user_from_token(token):
-    """Retrieve user and profile from Supabase Auth token or Dev token."""
-    if token == "dev-token-admin":
-        class DevUser:
-            id = "00000000-0000-0000-0000-000000000000"
-            email = "dev.admin@medipulse.org"
-        dev_profile = {
-            "id": "00000000-0000-0000-0000-000000000000",
-            "name": "Developer Admin",
-            "role": "ADMIN",
-            "department": "Engineering & Ops",
-            "is_active": True
-        }
-        return DevUser(), dev_profile
-
-    if token == "dev-token-nurse":
-        class DevNurseUser:
-            id = "11111111-1111-1111-1111-111111111111"
-            email = "nurse@medipulse.org"
-        dev_nurse_profile = {
-            "id": "11111111-1111-1111-1111-111111111111",
-            "name": "Sarah Jenkins, RN",
-            "role": "NURSE",
-            "department": "Cardiology & ICU",
-            "is_active": True
-        }
-        return DevNurseUser(), dev_nurse_profile
-
+    """Retrieve user and profile directly from Supabase Auth token."""
     supabase = get_db_client()   # anon client for auth.get_user
     db = get_admin_client()       # admin client for profiles table (bypasses RLS)
     try:

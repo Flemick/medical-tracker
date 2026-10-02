@@ -69,21 +69,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _quickLogin(UserModel user) {
-    widget.appState.loginAs(user);
-    if (user.role == UserRole.admin) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => AdminDashboardScreen(appState: widget.appState)),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => NurseHomeScreen(appState: widget.appState)),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -327,99 +312,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                     SizedBox(width: 8),
                                     Icon(Icons.arrow_forward_rounded, size: 18),
                                   ],
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Quick Demo Profiles Bar
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.borderLight),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.bolt_rounded,
-                              color: Color(0xFFF59E0B), size: 18),
-                          SizedBox(width: 6),
-                          Text(
-                            'Quick Demo Access (1-Click Switch)',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textMainLight,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: widget.appState.nurses.map((nurse) {
-                          final isAdmin = nurse.role == UserRole.admin;
-                          return InkWell(
-                            onTap: () => _quickLogin(nurse),
-                            borderRadius: BorderRadius.circular(10),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: isAdmin
-                                    ? const Color(0xFF3B82F6).withValues(alpha: 0.1)
-                                    : AppColors.primarySurface.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: isAdmin
-                                      ? const Color(0xFF3B82F6).withValues(alpha: 0.3)
-                                      : AppColors.primary.withValues(alpha: 0.3),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    isAdmin
-                                        ? Icons.admin_panel_settings_rounded
-                                        : Icons.person_rounded,
-                                    size: 14,
-                                    color: isAdmin
-                                        ? const Color(0xFF2563EB)
-                                        : AppColors.primaryDark,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    nurse.name.split(',')[0],
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: isAdmin
-                                          ? const Color(0xFF1D4ED8)
-                                          : AppColors.primaryDark,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '(${nurse.employeeId})',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.textMutedLight,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
                       ),
                     ],
                   ),
