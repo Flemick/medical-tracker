@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../../models/equipment.dart';
 import '../../services/app_state.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/status_badge.dart';
 import 'equipment_detail_screen.dart';
 
 class QrScannerScreen extends StatefulWidget {
@@ -65,37 +67,221 @@ class _QrScannerScreenState extends State<QrScannerScreen> with SingleTickerProv
         _scanError = null;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('Matched ${eq.name} (${eq.qrCode})'),
-              ),
-            ],
-          ),
-          backgroundColor: AppColors.statusAvailable,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(milliseconds: 1200),
-        ),
-      );
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => EquipmentDetailScreen(
-            equipmentId: eq.id,
-            appState: widget.appState,
-          ),
-        ),
-      );
+      _showQrActionSheet(eq);
     } else {
       setState(() {
         _scanError = 'No equipment matched QR tag "$cleanCode"';
       });
     }
+  }
+
+  void _showQrActionSheet(EquipmentModel equipment) {
+    final isAvailable = equipment.availability == EquipmentAvailability.available;
+    final isInUse = equipment.availability == EquipmentAvailability.inUse;
+
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primarySurface,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        equipment.category,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 22),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        setState(() => _isScanned = false);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  equipment.name,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textMainLight,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Tag: ${equipment.qrCode} • ${equipment.location.displayLocation}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textMutedLight),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    const Text('Current Status: ', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    AvailabilityBadge(availability: equipment.availability),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Primary QR Action Buttons
+                if (isAvailable) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        widget.appState.updateEquipmentAvailability(
+                          equipment.id,
+                          EquipmentAvailability.inUse,
+                        );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Checked Out: ${equipment.name} is now IN USE.'),
+                            backgroundColor: const Color(0xFF10B981),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EquipmentDetailScreen(
+                              equipmentId: equipment.id,
+                              appState: widget.appState,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.check_circle_outline_rounded, size: 20),
+                      label: const Text(
+                        'Take Equipment (Mark IN USE)',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                    ),
+                  ),
+                ] else if (isInUse) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3B82F6),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        widget.appState.updateEquipmentAvailability(
+                          equipment.id,
+                          EquipmentAvailability.available,
+                        );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Returned: ${equipment.name} is now AVAILABLE.'),
+                            backgroundColor: const Color(0xFF3B82F6),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EquipmentDetailScreen(
+                              equipmentId: equipment.id,
+                              appState: widget.appState,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.assignment_turned_in_rounded, size: 20),
+                      label: const Text(
+                        'Finish & Return (Mark AVAILABLE)',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEE2E2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'This equipment is ${AppTheme.getAvailabilityLabel(equipment.availability)} and cannot be taken for use.',
+                            style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => EquipmentDetailScreen(
+                            equipmentId: equipment.id,
+                            appState: widget.appState,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('View Equipment Details'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _toggleTorch() async {

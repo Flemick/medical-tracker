@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/qr_view_modal.dart';
 import '../complaints/create_complaint_screen.dart';
+import 'qr_scanner_screen.dart';
 
 class EquipmentDetailScreen extends StatefulWidget {
   final String equipmentId;
@@ -248,23 +249,49 @@ class _EquipmentDetailScreenState extends State<EquipmentDetailScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       AvailabilityBadge(availability: equipment.availability),
-                      InkWell(
-                        onTap: () => _showChangeAvailabilitySheet(equipment),
-                        child: const Row(
-                          children: [
-                            Text(
-                              'Change Status',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primaryDark,
+                      if (widget.appState.isAdmin)
+                        InkWell(
+                          onTap: () => _showChangeAvailabilitySheet(equipment),
+                          child: const Row(
+                            children: [
+                              Text(
+                                'Admin Override',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primaryDark,
+                                ),
                               ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_drop_down_rounded, color: AppColors.primaryDark, size: 20),
-                          ],
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_drop_down_rounded, color: AppColors.primaryDark, size: 20),
+                            ],
+                          ),
+                        )
+                      else if (equipment.availability == EquipmentAvailability.available || equipment.availability == EquipmentAvailability.inUse)
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: equipment.availability == EquipmentAvailability.available
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFF3B82F6),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => QrScannerScreen(appState: widget.appState),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.qr_code_scanner_rounded, size: 16),
+                          label: Text(
+                            equipment.availability == EquipmentAvailability.available ? 'Scan to Take' : 'Scan to Return',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ],

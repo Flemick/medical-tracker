@@ -232,7 +232,7 @@ class AppState extends ChangeNotifier {
         0,
         NotificationItem(
           id: 'notif-${_uuid.v4().substring(0, 8)}',
-          title: 'Equipment Availability Changed',
+          title: 'Equipment Status Updated',
           message: '${eq.name} (#${eq.qrCode}) is now ${AppTheme.getAvailabilityLabel(newStatus)}.',
           type: NotificationType.equipmentStatusChange,
           timestamp: DateTime.now(),
@@ -243,9 +243,31 @@ class AppState extends ChangeNotifier {
 
       notifyListeners();
 
-      // Async backend sync
+      String dbStatus = 'AVAILABLE';
+      switch (newStatus) {
+        case EquipmentAvailability.available:
+          dbStatus = 'AVAILABLE';
+          break;
+        case EquipmentAvailability.inUse:
+          dbStatus = 'IN_USE';
+          break;
+        case EquipmentAvailability.reserved:
+          dbStatus = 'RESERVED';
+          break;
+        case EquipmentAvailability.underMaintenance:
+          dbStatus = 'UNDER_MAINTENANCE';
+          break;
+        case EquipmentAvailability.missing:
+          dbStatus = 'MISSING';
+          break;
+        case EquipmentAvailability.outOfService:
+          dbStatus = 'OUT_OF_SERVICE';
+          break;
+      }
+
+      // Async backend sync to Supabase
       _api.updateEquipment(id, {
-        'status': newStatus.name.toUpperCase(),
+        'status': dbStatus,
       });
     }
   }
