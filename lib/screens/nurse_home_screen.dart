@@ -211,7 +211,7 @@ class _NurseHomeDashboardTab extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${nurse?.roleTitle ?? "RN"} • ${nurse?.employeeId ?? "NUR-000"}',
+                              '${nurse?.department ?? "General Ward"} · ${nurse?.employeeId ?? ""}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.white.withValues(alpha: 0.85),

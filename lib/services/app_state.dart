@@ -1,368 +1,301 @@
+// AppState — single ChangeNotifier for all USER app state.
+// API-FIRST: No mock data. All data comes from Flask backend.
+// Login flow:  email+password → Flask → JWT → /api/auth/me → load data
+// Startup flow: stored JWT → /api/auth/me → valid? restore : logout
+// Errors are surfaced to the UI — no silent fire-and-forget failures.
+
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
 import '../models/user_model.dart';
 import '../models/equipment.dart';
 import '../models/complaint.dart';
 import '../models/notification_item.dart';
-import '../theme/app_theme.dart';
 import 'api_service.dart';
+import 'auth_service.dart';
 
 class AppState extends ChangeNotifier {
-  final Uuid _uuid = const Uuid();
   final ApiService _api = ApiService();
+  final AuthService _auth = AuthService();
 
+  // ── State ─────────────────────────────────────────────────────────────────
   UserModel? _currentUser;
-  List<UserModel> _nurses = [];
   List<EquipmentModel> _equipments = [];
   List<ComplaintModel> _complaints = [];
   List<NotificationItem> _notifications = [];
 
-  bool _isSyncing = false;
-  bool _isOnline = false;
+  bool _isLoading = false;      // global loading (initial data fetch)
+  bool _isInitializing = true;  // true until session check is done
+  String? _globalError;         // surfaced to UI — never silent
+  Timer? _refreshTimer;         // automatic polling timer
 
+  // ── Getters ───────────────────────────────────────────────────────────────
   UserModel? get currentUser => _currentUser;
-  List<UserModel> get nurses => List.unmodifiable(_nurses);
   List<EquipmentModel> get equipments => List.unmodifiable(_equipments);
   List<ComplaintModel> get complaints => List.unmodifiable(_complaints);
   List<NotificationItem> get notifications => List.unmodifiable(_notifications);
 
-  bool get isSyncing => _isSyncing;
-  bool get isOnline => _isOnline;
-  String get apiBaseUrl => _api.baseUrl;
-
+  bool get isLoading => _isLoading;
+  bool get isInitializing => _isInitializing;
   bool get isLoggedIn => _currentUser != null;
   bool get isAdmin => _currentUser?.role == UserRole.admin;
-  bool get isNurse => _currentUser?.role == UserRole.nurse;
+  String? get globalError => _globalError;
+  String get apiBaseUrl => _api.baseUrl;
 
-  int get unreadNotificationsCount {
-    if (_currentUser == null) return 0;
-    return _notifications.where((n) {
-      if (n.isRead) return false;
-      if (n.targetNurseId != null && n.targetNurseId != _currentUser!.id) {
-        return false;
-      }
-      return true;
-    }).length;
-  }
+  List<NotificationItem> get userNotifications => List.unmodifiable(_notifications);
 
-  List<NotificationItem> get currentUserNotifications {
-    if (_currentUser == null) return [];
-    return _notifications.where((n) {
-      if (n.targetNurseId != null && n.targetNurseId != _currentUser!.id) {
-        return false;
-      }
-      return true;
-    }).toList();
-  }
+  /// Alias used by NotificationCenterScreen
+  List<NotificationItem> get currentUserNotifications => List.unmodifiable(_notifications);
+
+  int get unreadNotificationsCount =>
+      _notifications.where((n) => !n.isRead).length;
+
+  // ── Stubs for admin screens (will be removed in Stage 13) ─────────────────
+  List<UserModel> get nurses => const [];
+  Future<UserModel?> createNurse({
+    required String name, required String email,
+    required String department, required String shift,
+    required String employeeId, required String password,
+  }) async => null;
+  void toggleNurseActive(String id) {}
+
+
+  // ── Initialisation ────────────────────────────────────────────────────────
 
   AppState() {
-    _initializeData();
-    syncWithBackend();
+    _initOnStartup();
   }
 
-  void _initializeData() {
-    _nurses = [];
-    _equipments = [];
-    _complaints = [];
-    _notifications = [];
-    _currentUser = null;
+  /// On cold start: check for stored JWT, validate it against /api/auth/me.
+  Future<void> _initOnStartup() async {
+    _isInitializing = true;
+    notifyListeners();
+
+    await _auth.loadStoredToken();
+
+    if (_auth.hasToken) {
+      final user = await _api.fetchMe();
+      if (user != null && user.isActive) {
+        _currentUser = user;
+        // Load data in background after restoring session
+        _loadUserData();
+        _startAutoRefresh();
+      } else {
+        // Token invalid / expired / account disabled — clear it
+        await _auth.clearToken();
+      }
+    }
+
+    _isInitializing = false;
+    notifyListeners();
   }
 
-  void setApiBaseUrl(String newUrl) {
-    _api.setBaseUrl(newUrl);
-    syncWithBackend();
-  }
+  // ── Authentication ────────────────────────────────────────────────────────
 
-  // --- Background Sync with Flask & Supabase ---
-  Future<void> syncWithBackend() async {
-    _isSyncing = true;
+  /// Login: sends email+password to Flask, stores JWT, fetches profile.
+  /// Throws [ApiException] on failure (caller must show error to user).
+  Future<void> login(String email, String password) async {
+    _isLoading = true;
+    _globalError = null;
     notifyListeners();
 
     try {
-      final healthy = await _api.checkHealth();
-      _isOnline = healthy;
+      final result = await _api.login(email.trim(), password);
+      await _auth.saveToken(result.token);
+      _api; // token is now set in AuthService, ApiService reads it from there
 
-      if (healthy) {
-        final remoteEquipment = await _api.fetchEquipment();
-        if (remoteEquipment != null) {
-          _equipments = remoteEquipment;
-        }
+      final user = UserModel.fromProfileJson(result.profileJson, defaultEmail: email.trim());
+      if (!user.isActive) {
+        await _auth.clearToken();
+        throw ApiException('Your account has been disabled. Contact the administrator.');
+      }
 
-        final remoteComplaints = await _api.fetchComplaints();
-        if (remoteComplaints != null) {
-          _complaints = remoteComplaints;
-        }
+      _currentUser = user;
+      _isLoading = false;
+      notifyListeners();
 
-        final remoteNotifs = await _api.fetchNotifications();
-        if (remoteNotifs != null) {
-          _notifications = remoteNotifs;
-        }
+      // Load data after login (errors here don't block the user)
+      _loadUserData();
+      _startAutoRefresh();
+    } on ApiException {
+      _isLoading = false;
+      notifyListeners();
+      rethrow; // let the UI handle the message
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      throw ApiException('An unexpected error occurred. Please try again.');
+    }
+  }
+
+  /// Logout: clears token, clears all state, returns to login.
+  Future<void> logout() async {
+    await _auth.clearToken();
+    _currentUser = null;
+    _equipments = [];
+    _complaints = [];
+    _notifications = [];
+    _globalError = null;
+    _stopAutoRefresh();
+    notifyListeners();
+  }
+
+  // ── Data Loading ──────────────────────────────────────────────────────────
+
+  /// Load all USER data from the backend. Called after login and on startup.
+  /// Errors are stored in _globalError for the UI to surface.
+  Future<void> _loadUserData() async {
+    await Future.wait([
+      _loadEquipment(),
+      _loadComplaints(),
+      _loadNotifications(),
+    ]);
+  }
+
+  void _startAutoRefresh() {
+    _stopAutoRefresh(); // ensure no duplicates
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (isLoggedIn) {
+        _loadEquipment(); // silently fetch latest locations
+      }
+    });
+  }
+
+  void _stopAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
+  /// Refresh all data (called by pull-to-refresh).
+  Future<void> refreshAll() async {
+    _globalError = null;
+    notifyListeners();
+    await _loadUserData();
+  }
+
+  Future<void> _loadEquipment() async {
+    try {
+      final list = await _api.fetchEquipment();
+      _equipments = list;
+      notifyListeners();
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) {
+        await logout();
+      } else {
+        _globalError = 'Equipment load failed: ${e.message}';
+        notifyListeners();
       }
     } catch (e) {
-      debugPrint('Sync error: $e');
-    } finally {
-      _isSyncing = false;
+      _globalError = 'Equipment load failed. Check your connection.';
       notifyListeners();
     }
   }
 
-  // --- Auth Operations ---
-  Future<bool> loginWithEmailOrId(String identifier, String passwordOrPin) async {
-    final cleanId = identifier.trim();
-    final cleanPass = passwordOrPin.trim();
-
-    // Authenticate with remote Supabase API
-    final loginRes = await _api.login(cleanId, cleanPass);
-    if (loginRes != null) {
-      final profile = loginRes['profile'] as Map<String, dynamic>?;
-      final roleStr = profile?['role']?.toString().toUpperCase() ?? 'NURSE';
-      final role = roleStr == 'ADMIN' ? UserRole.admin : UserRole.nurse;
-
-      _currentUser = UserModel(
-        id: profile?['id']?.toString() ?? 'user-1',
-        employeeId: profile?['employee_id']?.toString() ?? (cleanId.contains('@') ? cleanId.split('@')[0] : cleanId),
-        name: profile?['name']?.toString() ?? 'Staff Member',
-        email: profile?['email']?.toString() ?? (cleanId.contains('@') ? cleanId : '$cleanId@hospital.org'),
-        department: profile?['department']?.toString() ?? 'General Care',
-        roleTitle: role == UserRole.admin ? 'Administrator' : 'Staff Nurse',
-        shift: profile?['shift']?.toString() ?? 'Standard Shift',
-        role: role,
-        pin: cleanPass,
-        isActive: profile?['is_active'] ?? true,
-        createdAt: DateTime.now(),
-      );
-      _isOnline = true;
-      notifyListeners();
-      syncWithBackend();
-      return true;
-    }
-
-    return false;
-  }
-
-  void logout() {
-    _currentUser = null;
-    _api.setAuthToken(null);
-    notifyListeners();
-  }
-
-  // --- Admin Nurse Management ---
-  UserModel createNurse({
-    required String employeeId,
-    required String name,
-    required String email,
-    required String department,
-    required String roleTitle,
-    required String shift,
-    required String pin,
-  }) {
-    final newNurse = UserModel(
-      id: 'nurse-${_uuid.v4().substring(0, 8)}',
-      employeeId: employeeId.trim().toUpperCase(),
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      department: department.trim(),
-      roleTitle: roleTitle.trim(),
-      shift: shift,
-      role: UserRole.nurse,
-      pin: pin.trim().isEmpty ? '1234' : pin.trim(),
-      isActive: true,
-      createdAt: DateTime.now(),
-    );
-
-    _nurses.add(newNurse);
-
-    _notifications.insert(
-      0,
-      NotificationItem(
-        id: 'notif-${_uuid.v4().substring(0, 8)}',
-        title: 'New Nurse Registered by Admin',
-        message: 'Account created for ${newNurse.name} (${newNurse.employeeId}) in ${newNurse.department}.',
-        type: NotificationType.systemBroadcast,
-        timestamp: DateTime.now(),
-        isRead: false,
-      ),
-    );
-
-    notifyListeners();
-    return newNurse;
-  }
-
-  void toggleNurseActive(String nurseId) {
-    final index = _nurses.indexWhere((n) => n.id == nurseId);
-    if (index != -1) {
-      final nurse = _nurses[index];
-      _nurses[index] = nurse.copyWith(isActive: !nurse.isActive);
-      notifyListeners();
-    }
-  }
-
-  // --- Equipment Operations ---
-  EquipmentModel? getEquipmentById(String id) {
-    return _equipments.cast<EquipmentModel?>().firstWhere(
-          (e) => e?.id == id,
-          orElse: () => null,
-        );
-  }
-
-  EquipmentModel? getEquipmentByQrOrCode(String code) {
-    final clean = code.trim().toUpperCase();
-    for (final e in _equipments) {
-      if (e.qrCode.toUpperCase() == clean ||
-          e.id.toUpperCase() == clean ||
-          e.serialNumber.toUpperCase() == clean ||
-          e.qrCode.toUpperCase().endsWith(clean)) {
-        return e;
+  Future<void> _loadComplaints() async {
+    try {
+      final list = await _api.fetchComplaints();
+      // USER sees only their own complaints (filtered by nurse_id)
+      if (_currentUser != null) {
+        _complaints = list
+            .where((c) => c.nurseId == _currentUser!.id)
+            .toList();
+      } else {
+        _complaints = list;
       }
+      notifyListeners();
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) {
+        await logout();
+      } else {
+        _globalError = 'Complaints load failed: ${e.message}';
+        notifyListeners();
+      }
+    } catch (e) {
+      _globalError = 'Complaints load failed. Check your connection.';
+      notifyListeners();
     }
-    return null;
   }
 
+  Future<void> _loadNotifications() async {
+    try {
+      final list = await _api.fetchNotifications();
+      _notifications = list;
+      notifyListeners();
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) {
+        await logout();
+      }
+      // Notification failures are non-critical — don't surface error
+    } catch (_) {
+      // non-critical
+    }
+  }
+
+  // ── Equipment Operations ──────────────────────────────────────────────────
+
+  EquipmentModel? getEquipmentById(String id) {
+    try {
+      return _equipments.firstWhere((e) => e.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Search equipment by equipment_id OR by qrCode URL string.
+  /// Used by QR scanner after extracting ID from scanned URL.
+  EquipmentModel? getEquipmentByQrOrCode(String code) {
+    try {
+      return _equipments.firstWhere(
+        (e) => e.id == code || e.qrCode == code || e.qrCode.contains(code),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Alias for complaint_list_screen.dart (USER only sees their own complaints;
+  /// filtering is already done in _loadComplaints).
+  List<ComplaintModel> getComplaintsForCurrentNurse() => List.unmodifiable(_complaints);
+
+  /// Optimistic local status update (UI feedback only — USER role cannot
+  /// update equipment status via the API; that is an Admin operation).
   void updateEquipmentAvailability(String id, EquipmentAvailability newStatus) {
     final index = _equipments.indexWhere((e) => e.id == id);
     if (index != -1) {
-      final eq = _equipments[index];
-      _equipments[index] = eq.copyWith(
-        availability: newStatus,
-        lastUpdatedTime: DateTime.now(),
-        lastUpdatedBy: _currentUser != null ? '${_currentUser!.name} (${_currentUser!.department})' : 'System',
-      );
-
-      _notifications.insert(
-        0,
-        NotificationItem(
-          id: 'notif-${_uuid.v4().substring(0, 8)}',
-          title: 'Equipment Status Updated',
-          message: '${eq.name} (#${eq.qrCode}) is now ${AppTheme.getAvailabilityLabel(newStatus)}.',
-          type: NotificationType.equipmentStatusChange,
-          timestamp: DateTime.now(),
-          isRead: false,
-          relatedEquipmentId: eq.id,
-        ),
-      );
-
-      notifyListeners();
-
-      String dbStatus = 'AVAILABLE';
-      switch (newStatus) {
-        case EquipmentAvailability.available:
-          dbStatus = 'AVAILABLE';
-          break;
-        case EquipmentAvailability.inUse:
-          dbStatus = 'IN_USE';
-          break;
-        case EquipmentAvailability.reserved:
-          dbStatus = 'RESERVED';
-          break;
-        case EquipmentAvailability.underMaintenance:
-          dbStatus = 'UNDER_MAINTENANCE';
-          break;
-        case EquipmentAvailability.missing:
-          dbStatus = 'MISSING';
-          break;
-        case EquipmentAvailability.outOfService:
-          dbStatus = 'OUT_OF_SERVICE';
-          break;
-      }
-
-      // Async backend sync to Supabase
-      _api.updateEquipment(id, {
-        'status': dbStatus,
-      });
-    }
-  }
-
-  void updateEquipmentLocation(String id, EquipmentLocation newLocation) {
-    final index = _equipments.indexWhere((e) => e.id == id);
-    if (index != -1) {
-      final eq = _equipments[index];
-      _equipments[index] = eq.copyWith(
-        location: newLocation,
-        lastUpdatedTime: DateTime.now(),
-        lastUpdatedBy: _currentUser != null ? _currentUser!.name : 'BioMed Ops',
-      );
+      _equipments[index] = _equipments[index].copyWith(availability: newStatus);
       notifyListeners();
     }
   }
 
-  // --- Complaints Operations ---
-  ComplaintModel submitComplaint({
+  /// Fetch a single equipment record live from backend (used after QR scan).
+  Future<EquipmentModel?> fetchEquipmentLive(String equipmentId) async {
+    try {
+      return await _api.fetchEquipmentById(equipmentId);
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) await logout();
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── Complaint Operations ──────────────────────────────────────────────────
+
+  /// Submit a new complaint. Returns the created complaint, throws ApiException on failure.
+  Future<ComplaintModel> submitComplaint({
     required String equipmentId,
     required ComplaintType type,
     required ComplaintSeverity severity,
     required String reportedLocation,
     required String description,
     String? errorCode,
-  }) {
+  }) async {
     final eq = getEquipmentById(equipmentId);
-    final nurse = _currentUser!;
-    final now = DateTime.now();
-    final ticketNum = 'CMP-${(1000 + _complaints.length + 1)}';
 
-    String typeLabel = 'Problem';
-    if (type == ComplaintType.missingEquipment) typeLabel = 'Missing Equipment';
-    if (type == ComplaintType.unavailableEquipment) typeLabel = 'Unavailable Equipment';
-
-    final newComplaint = ComplaintModel(
-      id: 'cmp-${_uuid.v4().substring(0, 8)}',
-      ticketNumber: ticketNum,
+    final complaint = await _api.createComplaint(
       equipmentId: equipmentId,
-      equipmentName: eq != null ? eq.name : 'Medical Equipment',
-      equipmentCode: eq != null ? eq.qrCode : 'UNKNOWN',
-      equipmentCategory: eq != null ? eq.category : 'General',
-      type: type,
-      severity: severity,
-      status: ComplaintStatus.submitted,
-      nurseId: nurse.id,
-      nurseName: nurse.name,
-      nurseDepartment: nurse.department,
-      reportedLocation: reportedLocation,
-      description: description,
-      errorCode: errorCode?.trim().isEmpty == true ? null : errorCode?.trim(),
-      reportedAt: now,
-      lastUpdatedAt: now,
-      timeline: [
-        ComplaintTimelineEvent(
-          title: 'Report Submitted',
-          description: 'Nurse ${nurse.name} filed $typeLabel for ${eq?.qrCode ?? 'equipment'}.',
-          timestamp: now,
-          actorName: nurse.name,
-          actorRole: nurse.roleTitle,
-        )
-      ],
-    );
-
-    _complaints.insert(0, newComplaint);
-
-    if (type == ComplaintType.missingEquipment && eq != null) {
-      updateEquipmentAvailability(eq.id, EquipmentAvailability.missing);
-    } else if (severity == ComplaintSeverity.emergency && eq != null) {
-      updateEquipmentAvailability(eq.id, EquipmentAvailability.underMaintenance);
-    }
-
-    _notifications.insert(
-      0,
-      NotificationItem(
-        id: 'notif-${_uuid.v4().substring(0, 8)}',
-        title: 'Ticket $ticketNum Submitted',
-        message: 'Your report for "${newComplaint.equipmentName}" is now queued for BioMed review.',
-        type: NotificationType.complaintUpdate,
-        timestamp: now,
-        isRead: false,
-        relatedComplaintId: newComplaint.id,
-        relatedEquipmentId: equipmentId,
-        targetNurseId: nurse.id,
-      ),
-    );
-
-    notifyListeners();
-
-    // Async backend post
-    _api.createComplaint(
-      equipmentId: equipmentId,
-      equipmentName: newComplaint.equipmentName,
-      equipmentCode: newComplaint.equipmentCode,
-      equipmentCategory: newComplaint.equipmentCategory,
+      equipmentName: eq?.name ?? '',
+      equipmentCode: eq?.qrCode ?? '',
+      equipmentCategory: eq?.category ?? '',
       type: type,
       severity: severity,
       reportedLocation: reportedLocation,
@@ -370,105 +303,78 @@ class AppState extends ChangeNotifier {
       errorCode: errorCode,
     );
 
-    return newComplaint;
+    // Prepend to local list immediately for instant UI feedback
+    _complaints.insert(0, complaint);
+    notifyListeners();
+
+    return complaint;
   }
 
-  List<ComplaintModel> getComplaintsForCurrentNurse() {
-    if (_currentUser == null) return [];
-    if (isAdmin) return _complaints;
-    return _complaints.where((c) => c.nurseId == _currentUser!.id).toList();
-  }
-
-  void updateComplaintStatus(
+  Future<void> updateComplaintStatus(
     String complaintId,
     ComplaintStatus newStatus, {
-    required String note,
+    String? note,
     String? assignedTech,
     String? resolution,
-  }) {
-    final index = _complaints.indexWhere((c) => c.id == complaintId);
-    if (index != -1) {
-      final cmp = _complaints[index];
-      final now = DateTime.now();
-
-      final newTimeline = List<ComplaintTimelineEvent>.from(cmp.timeline);
-      newTimeline.add(
-        ComplaintTimelineEvent(
-          title: 'Status: ${AppTheme.getComplaintStatusLabel(newStatus)}',
-          description: note,
-          timestamp: now,
-          actorName: _currentUser?.name ?? 'BioMed Admin',
-          actorRole: _currentUser?.roleTitle ?? 'System',
-        ),
-      );
-
-      final updated = cmp.copyWith(
-        status: newStatus,
-        lastUpdatedAt: now,
-        assignedTechName: assignedTech ?? cmp.assignedTechName,
-        resolutionSummary: resolution ?? cmp.resolutionSummary,
-        timeline: newTimeline,
-      );
-
-      _complaints[index] = updated;
-
-      _notifications.insert(
-        0,
-        NotificationItem(
-          id: 'notif-${_uuid.v4().substring(0, 8)}',
-          title: 'Ticket #${cmp.ticketNumber} Updated',
-          message: 'Status changed to "${AppTheme.getComplaintStatusLabel(newStatus)}": $note',
-          type: NotificationType.complaintUpdate,
-          timestamp: now,
-          isRead: false,
-          relatedComplaintId: cmp.id,
-          relatedEquipmentId: cmp.equipmentId,
-          targetNurseId: cmp.nurseId,
-        ),
-      );
-
-      notifyListeners();
-
-      // Async backend update
-      _api.updateComplaintStatus(
+  }) async {
+    try {
+      await _api.updateComplaintStatus(
         complaintId: complaintId,
         status: newStatus,
         assignedTechName: assignedTech,
         resolutionSummary: resolution,
       );
+      // Update local state
+      final index = _complaints.indexWhere((c) => c.id == complaintId);
+      if (index != -1) {
+        _complaints[index] = _complaints[index].copyWith(
+          status: newStatus,
+          assignedTechName: assignedTech ?? _complaints[index].assignedTechName,
+          resolutionSummary: resolution ?? _complaints[index].resolutionSummary,
+        );
+        notifyListeners();
+      }
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) {
+        await logout();
+      } else {
+        rethrow;
+      }
     }
   }
 
-  // --- Notification Operations ---
-  void markNotificationAsRead(String id) {
+  // ── Notification Operations ───────────────────────────────────────────────
+
+  Future<void> markNotificationAsRead(String id) async {
     final index = _notifications.indexWhere((n) => n.id == id);
     if (index != -1 && !_notifications[index].isRead) {
       _notifications[index] = _notifications[index].copyWith(isRead: true);
       notifyListeners();
-      _api.markNotificationRead(id);
+      await _api.markNotificationRead(id);
     }
   }
 
-  void markAllNotificationsAsRead() {
+  Future<void> markAllNotificationsAsRead() async {
     bool changed = false;
     for (int i = 0; i < _notifications.length; i++) {
       if (!_notifications[i].isRead) {
-        if (_notifications[i].targetNurseId == null ||
-            _notifications[i].targetNurseId == _currentUser?.id) {
-          _notifications[i] = _notifications[i].copyWith(isRead: true);
-          _api.markNotificationRead(_notifications[i].id);
-          changed = true;
-        }
+        _notifications[i] = _notifications[i].copyWith(isRead: true);
+        _api.markNotificationRead(_notifications[i].id); // fire-and-forget for mark-all
+        changed = true;
       }
     }
-    if (changed) {
-      notifyListeners();
-    }
+    if (changed) notifyListeners();
   }
 
+  /// Remove already-read notifications from local list (UI-only, not persisted to backend).
   void clearAllNotifications() {
-    _notifications.removeWhere((n) =>
-        n.targetNurseId == null || n.targetNurseId == _currentUser?.id);
+    _notifications.removeWhere((n) => n.isRead);
     notifyListeners();
+  }
+
+  // ── Configuration ─────────────────────────────────────────────────────────
+
+  void setApiBaseUrl(String url) {
+    _api.setBaseUrl(url);
   }
 }

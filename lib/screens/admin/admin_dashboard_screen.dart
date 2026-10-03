@@ -21,15 +21,18 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
-    final equipments = widget.appState.equipments;
-    final complaints = widget.appState.complaints;
+    return ListenableBuilder(
+      listenable: widget.appState,
+      builder: (context, _) {
+        final equipments = widget.appState.equipments;
+        final complaints = widget.appState.complaints;
 
-    final availableCount = equipments.where((e) => e.availability == EquipmentAvailability.available).length;
-    final inUseCount = equipments.where((e) => e.availability == EquipmentAvailability.inUse).length;
-    final maintenanceCount = equipments.where((e) => e.availability == EquipmentAvailability.underMaintenance).length;
-    final missingCount = equipments.where((e) => e.availability == EquipmentAvailability.missing).length;
+        final availableCount = equipments.where((e) => e.availability == EquipmentAvailability.available).length;
+        final inUseCount = equipments.where((e) => e.availability == EquipmentAvailability.inUse).length;
+        final maintenanceCount = equipments.where((e) => e.availability == EquipmentAvailability.underMaintenance).length;
+        final missingCount = equipments.where((e) => e.availability == EquipmentAvailability.missing).length;
 
-    return Scaffold(
+        return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text('BioMed & Admin Console'),
@@ -47,9 +50,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: Column(
+      body: RefreshIndicator(
+        color: AppColors.primary,
+        onRefresh: widget.appState.refreshAll,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Admin Banner
@@ -296,6 +303,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ],
         ),
       ),
+      ),
+    );
+      }
     );
   }
 }

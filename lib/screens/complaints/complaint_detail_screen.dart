@@ -86,30 +86,38 @@ class _ComplaintDetailScreenState extends State<ComplaintDetailScreen> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    widget.appState.updateComplaintStatus(
-                      complaint.id,
-                      selectedStatus,
-                      note: noteController.text.trim().isNotEmpty
-                          ? noteController.text.trim()
-                          : 'Status updated to ${AppTheme.getComplaintStatusLabel(selectedStatus)}',
-                      assignedTech: selectedStatus == ComplaintStatus.assignedToTech ||
-                              selectedStatus == ComplaintStatus.inProgress
-                          ? 'Tech Jackson (BioMed)'
-                          : null,
-                      resolution: selectedStatus == ComplaintStatus.resolved
-                          ? 'Device recalibrated, tested, and returned to clinical pool.'
-                          : null,
-                    );
-                    Navigator.pop(ctx);
-                    setState(() {});
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Ticket updated to "${AppTheme.getComplaintStatusLabel(selectedStatus)}"'),
-                        behavior: SnackBarBehavior.floating,
-                        backgroundColor: AppColors.primaryDark,
-                      ),
-                    );
+                  onPressed: () async {
+                    try {
+                      await widget.appState.updateComplaintStatus(
+                        complaint.id,
+                        selectedStatus,
+                        note: noteController.text.trim().isNotEmpty
+                            ? noteController.text.trim()
+                            : 'Status updated to ${AppTheme.getComplaintStatusLabel(selectedStatus)}',
+                        assignedTech: selectedStatus == ComplaintStatus.assignedToTech ||
+                                selectedStatus == ComplaintStatus.inProgress
+                            ? 'Tech Jackson (BioMed)'
+                            : null,
+                        resolution: selectedStatus == ComplaintStatus.resolved
+                            ? 'Device recalibrated, tested, and returned to clinical pool.'
+                            : null,
+                      );
+                      if (!mounted) return;
+                      Navigator.pop(ctx);
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Ticket updated to "${AppTheme.getComplaintStatusLabel(selectedStatus)}"'),
+                          behavior: SnackBarBehavior.floating,
+                          backgroundColor: AppColors.primaryDark,
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to update: $e')),
+                      );
+                    }
                   },
                   child: const Text('Update Ticket'),
                 ),

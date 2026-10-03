@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'services/app_state.dart';
 import 'theme/app_theme.dart';
 import 'screens/login_screen.dart';
-import 'screens/nurse_home_screen.dart';
-import 'screens/admin/admin_dashboard_screen.dart';
+import 'screens/user_home_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,27 +31,53 @@ class _MedicalTrackingAppState extends State<MedicalTrackingApp> {
     super.dispose();
   }
 
-  void _onStateChange() {
-    setState(() {});
-  }
+  void _onStateChange() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'St. Jude Medical Equipment & Tracking',
+      title: 'MediPulse — Equipment Tracker',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: _getInitialScreen(),
+      home: _buildHome(),
     );
   }
 
-  Widget _getInitialScreen() {
-    if (!_appState.isLoggedIn) {
-      return LoginScreen(appState: _appState);
+  Widget _buildHome() {
+    // Show a splash/loading screen while we validate any stored token.
+    if (_appState.isInitializing) {
+      return const _SplashScreen();
     }
-    if (_appState.isAdmin) {
-      return AdminDashboardScreen(appState: _appState);
+    // If logged in → USER home; otherwise → Login.
+    if (_appState.isLoggedIn) {
+      return UserHomeScreen(appState: _appState);
     }
-    return NurseHomeScreen(appState: _appState);
+    return LoginScreen(appState: _appState);
+  }
+}
+
+/// Shown only during the brief startup session-check (< 1 second normally).
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: AppColors.backgroundLight,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.medical_services_rounded,
+                size: 56, color: AppColors.primary),
+            SizedBox(height: 16),
+            CircularProgressIndicator(
+              color: AppColors.primary,
+              strokeWidth: 2.5,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

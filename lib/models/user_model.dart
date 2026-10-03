@@ -1,61 +1,73 @@
-enum UserRole { nurse, admin }
+// USER role model — Nurse and Staff are both treated as USER in the Flutter app.
+// Passwords are NEVER stored here. Authentication is handled by Flask → Supabase Auth.
+// Fields mapped directly from the backend profiles table response.
+
+enum UserRole { user, admin }
 
 class UserModel {
-  final String id;
-  final String employeeId;
-  final String name;
-  final String email;
-  final String department;
-  final String roleTitle;
-  final String shift; // 'Morning (07:00 - 15:00)', 'Evening (15:00 - 23:00)', 'Night (23:00 - 07:00)'
-  final UserRole role;
-  final String pin; // default login pin
-  final bool isActive;
-  final DateTime createdAt;
-  final String avatarUrl;
+  final String id;          // UUID from profiles.id / auth.users.id
+  final String name;        // profiles.name
+  final String email;       // profiles.email
+  final String department;  // profiles.department
+  final String shift;       // profiles.shift
+  final String employeeId;  // profiles.employee_id (may be empty)
+  final String avatarUrl;   // profiles.avatar_url
+  final UserRole role;      // Derived: ADMIN → admin, NURSE/STAFF → user
+  final bool isActive;      // profiles.is_active
 
   const UserModel({
     required this.id,
-    required this.employeeId,
     required this.name,
     required this.email,
     required this.department,
-    required this.roleTitle,
     required this.shift,
-    this.role = UserRole.nurse,
-    required this.pin,
-    this.isActive = true,
-    required this.createdAt,
-    this.avatarUrl = '',
+    required this.employeeId,
+    required this.avatarUrl,
+    required this.role,
+    required this.isActive,
   });
+
+  /// Factory constructor: creates a UserModel from the backend profile JSON.
+  /// Backend profile fields: id, name, email, role, department, shift,
+  ///   employee_id, avatar_url, is_active, created_at, updated_at
+  factory UserModel.fromProfileJson(Map<String, dynamic> profile, {String? defaultEmail}) {
+    final rawRole = (profile['role'] ?? '').toString().toUpperCase();
+    final userRole = rawRole == 'ADMIN' ? UserRole.admin : UserRole.user;
+
+    return UserModel(
+      id: profile['id']?.toString() ?? '',
+      name: profile['name']?.toString() ?? 'User',
+      email: profile['email']?.toString() ?? defaultEmail ?? '',
+      department: profile['department']?.toString() ?? 'General Ward',
+      shift: profile['shift']?.toString() ?? 'Morning (07:00 - 15:00)',
+      employeeId: profile['employee_id']?.toString() ?? '',
+      avatarUrl: profile['avatar_url']?.toString() ?? '',
+      role: userRole,
+      isActive: profile['is_active'] != false,
+    );
+  }
 
   UserModel copyWith({
     String? id,
-    String? employeeId,
     String? name,
     String? email,
     String? department,
-    String? roleTitle,
     String? shift,
-    UserRole? role,
-    String? pin,
-    bool? isActive,
-    DateTime? createdAt,
+    String? employeeId,
     String? avatarUrl,
+    UserRole? role,
+    bool? isActive,
   }) {
     return UserModel(
       id: id ?? this.id,
-      employeeId: employeeId ?? this.employeeId,
       name: name ?? this.name,
       email: email ?? this.email,
       department: department ?? this.department,
-      roleTitle: roleTitle ?? this.roleTitle,
       shift: shift ?? this.shift,
-      role: role ?? this.role,
-      pin: pin ?? this.pin,
-      isActive: isActive ?? this.isActive,
-      createdAt: createdAt ?? this.createdAt,
+      employeeId: employeeId ?? this.employeeId,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      role: role ?? this.role,
+      isActive: isActive ?? this.isActive,
     );
   }
 }

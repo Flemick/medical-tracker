@@ -65,7 +65,7 @@ class _CreateComplaintScreenState extends State<CreateComplaintScreen> {
     });
   }
 
-  void _handleSubmit() {
+  Future<void> _handleSubmit() async {
     setState(() => _errorMessage = null);
 
     if (_selectedEquipmentId == null) {
@@ -81,7 +81,7 @@ class _CreateComplaintScreenState extends State<CreateComplaintScreen> {
       return;
     }
 
-    final newComplaint = widget.appState.submitComplaint(
+    final newComplaint = await widget.appState.submitComplaint(
       equipmentId: _selectedEquipmentId!,
       type: _selectedType,
       severity: _selectedSeverity,
@@ -89,6 +89,7 @@ class _CreateComplaintScreenState extends State<CreateComplaintScreen> {
       description: _descriptionController.text.trim(),
       errorCode: _errorCodeController.text.trim().isNotEmpty ? _errorCodeController.text.trim() : null,
     );
+    if (!mounted) return;
 
     // Show Confirmation SnackBar
     ScaffoldMessenger.of(context).showSnackBar(
