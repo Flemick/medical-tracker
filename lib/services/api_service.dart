@@ -440,7 +440,7 @@ class ApiService {
       lastMaintainedDate: _parseDate(json['last_maintained_date']) ?? DateTime.now(),
       nextMaintenanceDate: _parseDate(json['next_maintenance_date']) ??
           DateTime.now().add(const Duration(days: 90)),
-      lastUpdatedTime: _parseDate(json['updated_at']) ?? DateTime.now(),
+      lastUpdatedTime: _parseDate(json['last_updated'] ?? json['updated_at']) ?? DateTime.now(),
       lastUpdatedBy: json['last_updated_by']?.toString() ?? 'System',
       currentAssignedPatient: json['current_assigned_patient']?.toString(),
       notes: json['notes']?.toString() ?? '',
